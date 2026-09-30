@@ -1,0 +1,17 @@
+# 仓库内统一以 LF 存储，checkout 时按平台自动转换。
+# 这样 Windows 上写代码、Linux 上编译不会出现整文件 diff。
+* text=auto
+
+# 二进制文件不要做行尾转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.bmp   binary
+*.ico   binary
+*.onnx  binary
+*.engine binary
+*.bin   binary
+*.bag   binary
+
+# vendor 进来的第三方代码保持原样，不参与任何规范化
+third_party/** -text
