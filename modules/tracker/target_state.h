@@ -1,10 +1,6 @@
 // EKF 状态向量的契约。
-//
-// 这个布局来自 rm_auto_aim 的 tracker_node.cpp:30-31（他们把模型写在 ROS 节点里）。
 // 跟踪器和瞄准层都依赖它，所以单独拎出来，只有这一处定义。
-//
 // 状态（9 维）：目标绕竖直轴旋转
-//
 //   [0] xc      旋转中心的 x（云台系，前）
 //   [1] v_xc    旋转中心速度
 //   [2] yc      旋转中心的 y（云台系，左）
@@ -24,11 +20,8 @@
 //
 // 注意是【减】号。反解就是 xc = xa + r*cos(yaw)，与 initEKF / handleArmorJump 一致。
 // tests/test_state.cpp 里有一个往返测试把这个符号锁死。
-
 #pragma once
-
 #include <Eigen/Dense>
-
 namespace autoaim::tracker {
 
 // 状态向量维数。改这个数必须同步改 tracker.cpp 里的 Q/F/P0 矩阵 ——

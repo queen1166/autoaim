@@ -24,8 +24,6 @@ namespace autoaim::bsp {
 // 再析构（app/threads 的 Handles 析构函数会做这件事）。
 class SerialPort {
 public:
-    // 构造：不打开任何东西，fd_ 保持 -1（is_open() 返回 false）。
-    // 真正打开设备要显式调 open()。
     SerialPort() = default;
 
     // 析构：自动调 close()，所以持有 SerialPort 的对象一销毁，

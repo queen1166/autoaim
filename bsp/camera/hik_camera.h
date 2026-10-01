@@ -1,14 +1,4 @@
 // 海康工业相机（MVS SDK）。
-//
-// ⚠️ 这个文件在本地【无法编译验证】—— 需要海康 MVS SDK。
-//    CMake 检测到 SDK 才会把它加进构建（AUTOAIM_HAVE_MVS）。
-//    第一次上机前，请对照官方示例核对 API：
-//        /opt/MVS/Samples/64/C++/GrabImage/GrabImage.cpp
-//    SDK 版本不同，个别函数签名有差异。
-//
-// ⚠️ 海康工业相机【不是 UVC 相机】。它不会出现在 /dev/video0，
-//    cv::VideoCapture(0) 打不开。必须走 MVS SDK。
-
 #pragma once
 
 #include <string>

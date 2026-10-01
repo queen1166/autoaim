@@ -39,10 +39,7 @@ struct CameraSpec {
 std::unique_ptr<CameraSource> makeCamera(const CameraSpec & spec);
 
 // 编译期是否带海康支持（即 CMake 有没有找到 MVS SDK）。
-//
 // 这个值在编译时就定死了，运行期不会变。main.cpp 用它来做启动检查：
-// 用户选了 --hik 但构建里没有，就直接报错退出，而不是等到 open() 才失败 ——
-// 报错信息能说得更清楚（"装好 SDK 后重新编译，装之前先问赛务"）。
 bool hasHikSupport();
 
 }  // namespace autoaim::bsp

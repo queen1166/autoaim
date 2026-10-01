@@ -1,14 +1,3 @@
-// Copyright (C) 2022 ChenJun
-// Copyright (C) 2024 Zheng Yu
-// Licensed under the MIT License.
-//
-// 派生自 rm_auto_aim/armor_detector/include/armor_detector/armor.hpp
-// 改动：
-//   1. 命名空间 rm_auto_aim → autoaim::detect
-//   2. ARMOR_TYPE_STR 改用 inline const char* const[]，去掉头文件里
-//      namespace 作用域定义 std::string 数组的写法（每个 TU 一份副本）
-//   3. 新增 ArmorType::SINGLE —— 单灯条降级，见 armor_detector.cpp
-
 #pragma once
 
 #include <opencv2/core.hpp>
@@ -18,11 +7,14 @@
 
 namespace autoaim::detect {
 
+//颜色代号
+//constexpr 编译期就定死的常量
 constexpr int RED = 0;
 constexpr int BLUE = 1;
 
 // SINGLE 是校内赛新增的降级类型：只找到一个合格灯条时使用。
 // 单灯条无法解算距离和姿态，只能给方位角。不要用它闭环开火。
+//enum class(枚举),small/large:装甲板的大小
 enum class ArmorType { SMALL, LARGE, SINGLE, INVALID };
 
 inline const char * const ARMOR_TYPE_STR[] = {"small", "large", "single", "invalid"};
@@ -36,7 +28,6 @@ inline const char * armorTypeStr(ArmorType t) {
 // 一根灯条（装甲板上那两条竖直发光条之一）。
 // 继承 cv::Rect 是为了顺带带上外接矩形 box（画图、算面积用）。
 struct Light : public cv::Rect {
-  // 默认构造：全零，代表"一根不合法的灯条"。容器占位用。
   Light() = default;
 
   // 由检测结果构造一根灯条，并把派生量一次算好。
@@ -47,7 +38,7 @@ struct Light : public cv::Rect {
   // tilt_angle 灯条的倾斜角，单位【度】。用来判断"是不是竖着的"
   //
   // 构造时自动算出：length（上下端点距离）、width（面积/长度）、
-  // center（上下端点中点）。这三个不用外面再传。
+  // center（上下端点中点）。
   explicit Light(cv::Rect box, cv::Point2f top, cv::Point2f bottom, int area,
                  float tilt_angle)
       : cv::Rect(box), top(top), bottom(bottom), tilt_angle(tilt_angle) {
@@ -67,7 +58,7 @@ struct Light : public cv::Rect {
 // 一块装甲板 = 左右两根灯条 + 它的中心 + 类型。
 // 由 Detector::matchLights() 配对产出，是检测模块的最终输出。
 struct Armor {
-  // 默认构造：灯条全零、type 为 INVALID。容器占位用。
+
   Armor() = default;
 
   // 由左右两根灯条配成一块装甲板。
@@ -93,9 +84,9 @@ struct Armor {
   ArmorType type = ArmorType::INVALID;
 
   // Number part（校内赛默认不启用分类器，这些字段保持默认值）
-  cv::Mat number_img;
-  std::string number;
-  float confidence = 0.0f;
+  cv::Mat number_img; //从装甲板上裁下来的数字小图
+  std::string number;//识别的数字
+  float confidence = 0.0f;//识别的置信度
   std::string classfication_result;  // 拼写沿用上游，勿改
 };
 

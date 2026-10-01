@@ -1,36 +1,9 @@
-// Copyright (C) 2022 ChenJun
-// Copyright (C) 2024 Zheng Yu
-// Licensed under the MIT License.
-//
-// 派生自 rm_auto_aim/armor_detector/include/armor_detector/pnp_solver.hpp
-// 改动：
-//   1. 命名空间 → autoaim::solver
-//   2. 删掉未使用的 #include <geometry_msgs/msg/point.hpp>（唯一的 ROS 耦合）
-//   3. 求解器 SOLVEPNP_IPPE → SOLVEPNP_ITERATIVE（理由见下）
-//   4. 装甲板尺寸从 config 传入，且区分"灯条几何"与"板子外形"
-//
-// ⚠️ 关于尺寸参数：这里的 width/height 是【灯条几何】，不是装甲板外形尺寸。
-//    图像点用的是灯条端点 {left.bottom, left.top, right.top, right.bottom}，
-//    对应的物体点是 (0, ±width/2, ±height/2)。所以：
-//        width  = 两根灯条【中心】之间的距离
-//        height = 灯条的【长度】
-//    拿板子外形尺寸填进来，PnP 的尺度就错了 —— 错 10% 距离就错 10%。
-//    必须用"放在已知距离上反标"的办法实测（见 README）。
-
 #pragma once
-
 #include <opencv2/core.hpp>
-
 #include <array>
 #include <vector>
-
 #include "modules/detect/armor.h"
-
 namespace autoaim::solver {
-
-// 一套装甲板的几何参数，单位 mm。★ 现场必须实测反标，见 README。
-//
-// 再强调一次：这是【灯条几何】，不是装甲板外形尺寸！
 // width  = 两根灯条【中心】之间的距离
 // height = 灯条的【长度】
 struct ArmorGeometry {
@@ -68,7 +41,6 @@ class PnPSolver {
   //   · armor.type == SINGLE —— 单灯条是退化的，解不出位姿
   // 注意 rvec/tvec 在失败时不会被写入，调用方要先判返回值再用。
   bool solvePnP(const detect::Armor & armor, cv::Mat & rvec, cv::Mat & tvec) const;
-
   // 把物体点重投影回图像，返回四个点的均方根像素误差。
   // 用来做质量闸门：误差过大说明检测的角点不可信，应丢弃该帧。
   //
@@ -79,7 +51,6 @@ class PnPSolver {
   // SolverConfig::max_reprojection_error_px（默认 3.0）比，超了就丢这一帧。
   double reprojectionError(const detect::Armor & armor, const cv::Mat & rvec,
                            const cv::Mat & tvec) const;
-
   // 装甲板中心到图像主点的像素距离，用作瞄准优先级。
   // 多个候选时挑"离准星最近的那块"打。校内赛单靶板，基本用不上。
   //
