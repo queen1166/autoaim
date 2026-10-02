@@ -50,10 +50,17 @@ endif()
 # ─────────────────────────────────────────────────────────────
 # 海康 MVS SDK：可选。没有它也能跑 --replay 离线模式。
 # SDK 默认装在 /opt/MVS。装之前先问赛务（同样是系统级安装）。
+#
+# 但比赛机器上只装了运行时：/opt/MVS/lib/64 有 .so，却没有 include/。
+# 所以头文件 vendor 在 third_party/mvs/include/（V5.1.0，从官方 Linux 包里
+# 【只抽出 include/】，没有执行安装，因而不碰 /usr/lib 与 udev 规则）。
+# 库仍用机器上现成的那个 .so，两处搜索路径的先后即优先级。
 # ─────────────────────────────────────────────────────────────
 set(MVS_ROOT "/opt/MVS" CACHE PATH "海康 MVS SDK 根目录")
 find_path(MVS_INCLUDE_DIR NAMES MvCameraControl.h
-          PATHS ${MVS_ROOT}/include /usr/include)
+          PATHS ${MVS_ROOT}/include
+                ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mvs/include
+                /usr/include)
 find_library(MV_CAMERA_LIB NAMES MvCameraControl
              PATHS ${MVS_ROOT}/lib/64 ${MVS_ROOT}/lib /usr/lib)
 
