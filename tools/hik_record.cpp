@@ -35,6 +35,8 @@ struct Args {
   int max_frames = 0;
   float exposure = 5000.0f;
   float gain = 10.0f;
+  int width = 0;
+  int height = 0;
   bool help = false;
 };
 
@@ -58,6 +60,13 @@ void printHelp(const char * prog) {
       "相机参数（只对海康生效）:\n"
       "  --exposure <us>         曝光时间，微秒，默认 5000\n"
       "  --gain <g>              增益，默认 10（尽量低，噪声会放大）\n"
+      "\n"
+      "诊断参数（只对海康生效）:\n"
+      "  --width <px>            压小采集宽度，默认用相机自己的\n"
+      "  --height <px>           压小采集高度，同上\n"
+      "                          用途：`StartGrabbing` 报 0x80000006 时，\n"
+      "                          减小单帧字节数试试能不能绕开内核的 USB 缓冲上限。\n"
+      "                          ⚠️ 改分辨率会让标定内参失效，只拿来验证相机能不能出图。\n"
       "\n"
       "同时记录云台角度（可选，给外参标定用）:\n"
       "  --device <路径>         串口设备，如 /dev/serial/by-id/usb-xxx\n"
@@ -125,6 +134,12 @@ bool parseArgs(int argc, char ** argv, Args & a) {
     } else if (s == "--gain") {
       if (!wantValue(i, argc, argv)) return false;
       a.gain = static_cast<float>(std::atof(argv[++i]));
+    } else if (s == "--width") {
+      if (!wantValue(i, argc, argv)) return false;
+      a.width = std::atoi(argv[++i]);
+    } else if (s == "--height") {
+      if (!wantValue(i, argc, argv)) return false;
+      a.height = std::atoi(argv[++i]);
     } else {
       std::fprintf(stderr, "未知参数: %s\n\n", s.c_str());
       printHelp(argv[0]);
@@ -166,6 +181,8 @@ int main(int argc, char ** argv) {
   spec.exposure_us = a.exposure;
   spec.gain = a.gain;
   spec.auto_exposure = false;
+  spec.width = a.width;
+  spec.height = a.height;
 
   auto cam = bsp::makeCamera(spec);
   if (!cam || !cam->open()) {

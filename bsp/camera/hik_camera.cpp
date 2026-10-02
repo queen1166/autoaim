@@ -5,6 +5,7 @@
 #include "MvCameraControl.h"
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>  // cv::cvtColor（BGR8 回退路径用）
 
 #include <cstdio>
 #include <cstring>
@@ -69,6 +70,16 @@ bool HikCamera::open() {
 
   ret = MV_CC_SetFloatValue(handle_, "Gain", cfg_.gain);
   if (ret != MV_OK) printError("SetFloatValue(Gain)", ret);
+
+  // 诊断用：压小分辨率。必须赶在下面读 PayloadSize 之前，否则读到的还是旧值。
+  if (cfg_.width > 0) {
+    ret = MV_CC_SetIntValueEx(handle_, "Width", cfg_.width);
+    if (ret != MV_OK) printError("SetIntValueEx(Width)", ret);
+  }
+  if (cfg_.height > 0) {
+    ret = MV_CC_SetIntValueEx(handle_, "Height", cfg_.height);
+    if (ret != MV_OK) printError("SetIntValueEx(Height)", ret);
+  }
 
   const int pixel_ret =
       MV_CC_SetEnumValue(handle_, "PixelFormat", PixelType_Gvsp_RGB8_Packed);

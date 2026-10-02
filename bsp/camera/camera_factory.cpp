@@ -35,6 +35,8 @@ std::unique_ptr<CameraSource> makeCamera(const CameraSpec & spec) {
       hc.exposure_us = spec.exposure_us;
       hc.gain = spec.gain;
       hc.auto_exposure = spec.auto_exposure;
+      hc.width = spec.width;
+      hc.height = spec.height;
       return std::make_unique<HikCamera>(hc);
 #else
       std::fprintf(stderr,
