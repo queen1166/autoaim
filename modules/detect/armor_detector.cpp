@@ -1,13 +1,3 @@
-// Copyright (C) 2022 ChenJun
-// Copyright (C) 2024 Zheng Yu
-// Licensed under the MIT License.
-//
-// 派生自 rm_auto_aim/armor_detector/src/detector.cpp
-// 改动：
-//   1. 命名空间 → autoaim::detect
-//   2. 删掉 isLight/isArmor/matchLights 里的 debug 消息填充（纯 ROS 调试用）
-//   3. detect() 里 classifier 加空指针保护（上游是无条件解引用）
-//   4. 新增单灯条降级路径
 
 #include <opencv2/core.hpp>
 #include <opencv2/core/base.hpp>
@@ -32,15 +22,11 @@ std::vector<Armor> Detector::detect(const cv::Mat & input) {
   lights_ = findLights(input, binary_img);
   armors_ = matchLights(lights_);
 
-  // 上游在这里无条件解引用 classifier，一旦没赋值就是 UB。
   if (classifier && !armors_.empty()) {
     classifier->extractNumbers(input, armors_);
     classifier->classify(armors_);
   }
 
-  // 降级：没能配出装甲板，但恰好找到少数几个合格灯条时，
-  // 把它们各自当成一块 SINGLE 装甲板。
-  // 单灯条解不出距离和姿态，仅用于让云台朝大致方位，不要用它闭环开火。
   if (armors_.empty() && single_light_fallback && !lights_.empty() &&
       static_cast<int>(lights_.size()) <= max_single_light_count) {
     for (const auto & light : lights_) {
@@ -87,7 +73,6 @@ std::vector<Light> Detector::findLights(const cv::Mat & rgb_img,
     cv::fillPoly(mask, {mask_contour}, 255);
     std::vector<cv::Point> points;
     cv::findNonZero(mask, points);
-    // points / rotated rect area
     bool is_fill_rotated_rect =
         points.size() / (r_rect.size.width * r_rect.size.height) > l.min_fill_ratio;
 
@@ -113,23 +98,20 @@ std::vector<Light> Detector::findLights(const cv::Mat & rgb_img,
 
     if (isLight(light) && is_fill_rotated_rect) {
       auto rect = light;
-      if (  // Avoid assertion failed
+      if (
           0 <= rect.x && 0 <= rect.width && rect.x + rect.width <= rgb_img.cols &&
           0 <= rect.y && 0 <= rect.height && rect.y + rect.height <= rgb_img.rows) {
         int sum_r = 0, sum_b = 0;
         auto roi = rgb_img(rect);
-        // Iterate through the ROI
         for (int i = 0; i < roi.rows; i++) {
           for (int j = 0; j < roi.cols; j++) {
             if (cv::pointPolygonTest(contour, cv::Point2f(j + rect.x, i + rect.y),
                                      false) >= 0) {
-              // 输入约定是 RGB，所以 [0] 是 R、[2] 是 B。喂 BGR 会红蓝颠倒。
               sum_r += roi.at<cv::Vec3b>(i, j)[0];
               sum_b += roi.at<cv::Vec3b>(i, j)[2];
             }
           }
         }
-        // Sum of red pixels > sum of blue pixels ?
         light.color = sum_r > sum_b ? RED : BLUE;
         lights.emplace_back(light);
       }
@@ -140,7 +122,6 @@ std::vector<Light> Detector::findLights(const cv::Mat & rgb_img,
 }
 
 bool Detector::isLight(const Light & light) {
-  // The ratio of light (short side / long side)
   float ratio = light.width / light.length;
   bool ratio_ok = l.min_ratio < ratio && ratio < l.max_ratio;
 
@@ -152,7 +133,6 @@ bool Detector::isLight(const Light & light) {
 std::vector<Armor> Detector::matchLights(const std::vector<Light> & lights) {
   std::vector<Armor> armors;
 
-  // Loop all the pairing of lights
   for (auto light_1 = lights.begin(); light_1 != lights.end(); light_1++) {
     for (auto light_2 = light_1 + 1; light_2 != lights.end(); light_2++) {
       if (light_1->color != detect_color || light_2->color != detect_color) continue;
@@ -173,7 +153,6 @@ std::vector<Armor> Detector::matchLights(const std::vector<Light> & lights) {
   return armors;
 }
 
-// Check if there is another light in the boundingRect formed by the 2 lights
 bool Detector::containLight(const Light & light_1, const Light & light_2,
                             const std::vector<Light> & lights) {
   auto points =
@@ -194,13 +173,11 @@ bool Detector::containLight(const Light & light_1, const Light & light_2,
 }
 
 ArmorType Detector::isArmor(const Light & light_1, const Light & light_2) {
-  // Ratio of the length of 2 lights (short side / long side)
   float light_length_ratio = light_1.length < light_2.length
                                  ? light_1.length / light_2.length
                                  : light_2.length / light_1.length;
   bool light_ratio_ok = light_length_ratio > a.min_light_ratio;
 
-  // Distance between the center of 2 lights (unit : light length)
   float avg_light_length = (light_1.length + light_2.length) / 2;
   float center_distance = cv::norm(light_1.center - light_2.center) / avg_light_length;
   bool center_distance_ok =
@@ -209,7 +186,6 @@ ArmorType Detector::isArmor(const Light & light_1, const Light & light_2) {
       (a.min_large_center_distance <= center_distance &&
        center_distance < a.max_large_center_distance);
 
-  // Angle of light center connection
   cv::Point2f diff = light_1.center - light_2.center;
   float angle = std::abs(std::atan(diff.y / diff.x)) / CV_PI * 180;
   bool angle_ok = angle < a.max_angle;
@@ -236,7 +212,6 @@ cv::Mat Detector::getAllNumbersImage() {
 }
 
 void Detector::drawResults(cv::Mat & img) {
-  // Draw Lights
   for (const auto & light : lights_) {
     cv::circle(img, light.top, 3, cv::Scalar(255, 255, 255), 1);
     cv::circle(img, light.bottom, 3, cv::Scalar(255, 255, 255), 1);
@@ -244,10 +219,8 @@ void Detector::drawResults(cv::Mat & img) {
     cv::line(img, light.top, light.bottom, line_color, 1);
   }
 
-  // Draw armors
   for (const auto & armor : armors_) {
     if (armor.type == ArmorType::SINGLE) {
-      // 单灯条：只画灯条本身，没有对角连线
       cv::rectangle(img, armor.left_light, cv::Scalar(0, 165, 255), 2);
       cv::putText(img, "SINGLE", armor.left_light.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.6,
                   cv::Scalar(0, 165, 255), 2);
@@ -257,7 +230,6 @@ void Detector::drawResults(cv::Mat & img) {
     cv::line(img, armor.left_light.bottom, armor.right_light.top, cv::Scalar(0, 255, 0), 2);
   }
 
-  // Show numbers and confidence
   for (const auto & armor : armors_) {
     if (armor.classfication_result.empty()) continue;
     cv::putText(img, armor.classfication_result, armor.left_light.top,
@@ -265,4 +237,4 @@ void Detector::drawResults(cv::Mat & img) {
   }
 }
 
-}  // namespace autoaim::detect
+}

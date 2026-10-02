@@ -1,7 +1,3 @@
-// PnP 离线测试：合成投影 → solvePnP → 断言位姿被还原。
-//
-// 用例 3 是本文件最重要的一个：它量化了"装甲板尺寸填错会怎样"。
-// 这直接对应方案 §0(4)：物体点用的是【灯条几何】，不是板子外形尺寸。
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
@@ -28,15 +24,12 @@ void check(bool ok, const char * what) {
 const std::array<double, 9> kK = {1000, 0, 720, 0, 1000, 540, 0, 0, 1};
 const std::vector<double> kD = {0, 0, 0, 0, 0};
 
-// 让装甲板正对相机的旋转：模型 x(法线) → 相机 z，模型 y(左) → 相机 -x，模型 z(上) → 相机 -y
 cv::Matx33d headOnRotation() {
   return cv::Matx33d(0, -1, 0,
                      0,  0, -1,
                      1,  0,  0);
 }
 
-// 生成一块装甲板的四个投影点，并按 PnP 要求的顺序返回
-// {left.bottom, left.top, right.top, right.bottom}
 std::vector<cv::Point2f> projectArmor(float width_mm, float height_mm, double dist) {
   const double hy = width_mm / 2.0 / 1000.0;
   const double hz = height_mm / 2.0 / 1000.0;
@@ -56,24 +49,22 @@ std::vector<cv::Point2f> projectArmor(float width_mm, float height_mm, double di
                      const_cast<double *>(kK.data())), cv::Mat(1, 5, CV_64F,
                      const_cast<double *>(kD.data())), img);
 
-  // 图像点顺序 = {left.bottom, left.top, right.top, right.bottom}
   return {img[0], img[1], img[2], img[3]};
 }
 
 detect::Armor makeArmor(const std::vector<cv::Point2f> & p, detect::ArmorType type) {
-  detect::Light left(cv::Rect(0, 0, 12, 50), p[1], p[0], 600, 0.0f);    // top, bottom
+  detect::Light left(cv::Rect(0, 0, 12, 50), p[1], p[0], 600, 0.0f);
   detect::Light right(cv::Rect(0, 0, 12, 50), p[2], p[3], 600, 0.0f);
   detect::Armor armor(left, right);
   armor.type = type;
   return armor;
 }
 
-}  // namespace
+}
 
 int main() {
   std::printf("相机 fx=fy=1000, cx=720, cy=540；靶板正对相机，放置在 5.00 m\n\n");
 
-  // ── 用例 1：标准小装甲板 132x57，正对 5m ─────────────────────
   std::printf("用例 1：132x57mm @ 5.00m，尺寸填对\n");
   {
     auto pts = projectArmor(132, 57, 5.0);
@@ -94,7 +85,6 @@ int main() {
     }
   }
 
-  // ── 用例 2：SINGLE 必须拒绝 ──────────────────────────────────
   std::printf("用例 2：SINGLE 类型应被拒绝\n");
   {
     auto pts = projectArmor(132, 57, 5.0);
@@ -104,11 +94,9 @@ int main() {
     check(!solver.solvePnP(armor, rvec, tvec), "solvePnP 返回 false");
   }
 
-  // ── 用例 3：尺寸填错会怎样（方案 §0(4) 的量化）────────────────
-  // 把 140mm 当板宽填进去，但真值是 132mm 的灯条中心距
   std::printf("用例 3：几何参数填错 —— 这是最常见的致命错误\n");
   {
-    auto pts = projectArmor(132, 57, 5.0);   // 真实几何是 132
+    auto pts = projectArmor(132, 57, 5.0);
     auto armor = makeArmor(pts, detect::ArmorType::SMALL);
 
     for (float w : {132.0f, 140.0f, 120.0f}) {
@@ -125,7 +113,6 @@ int main() {
     std::printf("       → 尺寸错 6%%，距离就错 6%%。必须实测反标，不能猜。\n");
   }
 
-  // ── 用例 4：距离变化时尺度是否线性 ────────────────────────────
   std::printf("用例 4：不同距离下的解算\n");
   {
     PnPSolver solver(kK, kD);
@@ -144,7 +131,6 @@ int main() {
     std::printf("       （任一行超出 5%% 会体现在最后的失败计数里）\n");
   }
 
-  // ── 用例 5：calculateDistanceToCenter ────────────────────────
   std::printf("用例 5：calculateDistanceToCenter\n");
   {
     PnPSolver solver(kK, kD);

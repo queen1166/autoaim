@@ -1,35 +1,3 @@
-// 真机录包 —— 把相机画面存成 --replay 能直接吃的图像序列。
-//
-// ── 为什么必须有这个工具 ──────────────────────────────────────
-//
-// bsp/camera/replay_source.h 把"录包 + 回放"当成一等公民来设计
-// （理由：NUC 是共用设备、车很难约，没有离线回放就只能占着车调参）。
-//
-// 但整个仓库里 saveFrame() 【只有定义和声明，没有任何调用者】——
-// 也就是说这个设计的前提从来没被满足过：现场根本没法把真实画面存下来。
-// 没有它，每试一个 binary_thres 都要重新占一次车。
-//
-// ── 安全 ────────────────────────────────────────────────────
-//
-// 本工具【只读串口，不发送任何字节】。它不会驱动云台，也不会请求开火。
-// 云台由你手动（右键进入视觉控制）或另一个程序控制。
-//
-// ── 用法 ────────────────────────────────────────────────────
-//
-//   # 最简单：录 30 秒
-//   ./build/tools/tool_hik_record --out bags/0930 --secs 30
-//
-//   # 录包 + 顺便记录每帧的云台角度（给 calib_extrinsic.py 用）
-//   ./build/tools/tool_hik_record --out bags/calib --secs 60
-//       --device /dev/serial/by-id/usb-xxx --every 5
-//
-//   # 没有相机时，从已有回放里"再录一遍"，用来验证流程本身
-//   ./build/tools/tool_hik_record --replay bags/0930 --out /tmp/sub --secs 5
-//
-// 录出来的目录可以直接喂给：
-//   ./build/autoaim --replay <out> ...
-//   ./build/tools/tool_detect_view <out>
-//   python3 tools/calib_extrinsic.py --images <out> --angles <out>/angles.csv ...
 
 #include <algorithm>
 #include <atomic>
@@ -43,12 +11,10 @@
 #include <string>
 
 #include "bsp/camera/camera_factory.h"
-#include "bsp/camera/replay_source.h"  // saveFrame
+#include "bsp/camera/replay_source.h"
 #include "bsp/serial/serial_port.h"
 #include "modules/protocol/srm_protocol.h"
 
-// 和 tools/detect_view.cpp 一样：下面的 bsp:: 全是 autoaim::bsp:: 的简写。
-// 不加这行的话 bsp::makeCamera 这种写法根本解析不了。
 using namespace autoaim;
 
 namespace {
@@ -58,15 +24,15 @@ std::atomic<bool> g_running{true};
 void onSignal(int) { g_running.store(false); }
 
 struct Args {
-  std::string out;          // 输出目录（必填）
-  std::string replay;       // 非空 = 用回放当输入，而不是海康相机
-  std::string device;       // 非空 = 同时记录云台角度
-  std::string angles_file;  // 角度日志路径，默认 <out>/angles.csv
-  double secs = 20.0;       // 录制时长
-  double replay_fps = 60.0; // --replay 模式下的输入帧率
-  int every = 1;            // 每 N 帧存 1 张
-  int start = 0;            // 跳过前 N 帧（躲开启动瞬态 / 还没对焦的时刻）
-  int max_frames = 0;       // 最多存多少张，0 = 不限
+  std::string out;
+  std::string replay;
+  std::string device;
+  std::string angles_file;
+  double secs = 20.0;
+  double replay_fps = 60.0;
+  int every = 1;
+  int start = 0;
+  int max_frames = 0;
   float exposure = 5000.0f;
   float gain = 10.0f;
   bool help = false;
@@ -175,10 +141,6 @@ bool parseArgs(int argc, char ** argv, Args & a) {
   return true;
 }
 
-// 目录里已经有没有图像？有的话拒绝录制。
-//
-// 为什么要拦这一下：文件名是 000000.png 起的序号，直接开录会【静默覆盖】
-// 别人（或你自己上一次）录好的包。录一次包要占着车，覆盖掉很可惜。
 bool dirHasImages(const std::string & dir) {
   for (const char * ext : {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}) {
     std::string p = dir + "/000000" + ext;
@@ -190,23 +152,20 @@ bool dirHasImages(const std::string & dir) {
   return false;
 }
 
-}  // namespace
+}
 
 int main(int argc, char ** argv) {
   Args a;
   if (!parseArgs(argc, argv, a)) return 1;
 
-  // ── 相机 ──────────────────────────────────────────────────
-  // 统一走 makeCamera()，这样 --replay 分支自动可用；没有 MVS SDK 时
-  // makeCamera(HIK) 会自己打印"本次构建不含海康支持"并返回 nullptr。
   bsp::CameraSpec spec;
   spec.kind = a.replay.empty() ? bsp::CameraKind::HIK : bsp::CameraKind::REPLAY;
   spec.replay_dir = a.replay;
   spec.replay_fps = a.replay_fps;
-  spec.replay_loop = false;  // 录完就结束，别循环
+  spec.replay_loop = false;
   spec.exposure_us = a.exposure;
   spec.gain = a.gain;
-  spec.auto_exposure = false;  // ⭐ 录制时绝不开自动曝光
+  spec.auto_exposure = false;
 
   auto cam = bsp::makeCamera(spec);
   if (!cam || !cam->open()) {
@@ -222,7 +181,6 @@ int main(int argc, char ** argv) {
     return 1;
   }
 
-  // ── 串口（可选，只读） ────────────────────────────────────
   bsp::SerialPort port;
   srm::FrameParser parser;
   bool have_serial = false;
@@ -243,8 +201,6 @@ int main(int argc, char ** argv) {
       std::fprintf(stderr, "[record] 角度日志写不了: %s\n", a.angles_file.c_str());
       return 1;
     }
-    // u/v 两列留空 —— calib_extrinsic.py 会自己从图像里找靶心。
-    // 想手工填像素的话直接编辑这个文件即可。
     angles << "file,yaw_deg,pitch_deg,u,v\n";
     std::printf("[record] 云台角度写到 %s（串口只读，不发送）\n",
                 a.angles_file.c_str());
@@ -262,7 +218,6 @@ int main(int argc, char ** argv) {
   }
   std::printf("[record] Ctrl-C 提前结束。\n\n");
 
-  // ── 录制循环 ──────────────────────────────────────────────
   const uint64_t t0 = bsp::nowNs();
   const uint64_t deadline = t0 + static_cast<uint64_t>(a.secs * 1e9);
 
@@ -270,7 +225,6 @@ int main(int argc, char ** argv) {
   double fb_yaw = 0.0, fb_pitch = 0.0;
   bool have_angle = false;
 
-  // 只读地泵一次串口。select() 超时 0 = 纯轮询，不会阻塞取帧循环。
   auto pumpSerial = [&]() {
     if (!have_serial) return;
     const ssize_t n = port.read_bytes(rx, sizeof(rx), 0);
@@ -284,8 +238,8 @@ int main(int argc, char ** argv) {
                 bsp::nowNs());
   };
 
-  uint64_t total = 0;   // 见到的总帧数
-  uint64_t kept = 0;    // 存下来的张数
+  uint64_t total = 0;
+  uint64_t kept = 0;
   uint64_t no_frame = 0;
 
   while (g_running.load()) {
@@ -298,7 +252,7 @@ int main(int argc, char ** argv) {
     auto frame = cam->grab(budget_ms);
 
     if (!frame) {
-      if (cam->exhausted()) break;  // --replay 播完了
+      if (cam->exhausted()) break;
       ++no_frame;
       pumpSerial();
       continue;
@@ -307,8 +261,6 @@ int main(int argc, char ** argv) {
     pumpSerial();
     ++total;
 
-    // 还没到起始帧，或者不够 every，就只统计不存。
-    // 存下来的第一张是第 start+1 帧，之后每隔 every 帧一张。
     if (static_cast<int>(total) <= a.start) continue;
     if ((static_cast<int>(total) - a.start - 1) % a.every != 0) continue;
 
@@ -329,7 +281,6 @@ int main(int argc, char ** argv) {
     }
     ++kept;
 
-    // 实时状态行。用 \r 原地刷新，不刷屏 —— 录制循环里尽量少做 IO。
     const double el = static_cast<double>(now - t0) / 1e9;
     if (have_serial && have_angle) {
       std::printf("\r  已存 %4llu 张  %5.1fs  云台 yaw=%+7.2f pitch=%+7.2f   ",
@@ -346,7 +297,6 @@ int main(int argc, char ** argv) {
   if (angles) angles.close();
   if (have_serial) port.close();
 
-  // ── 总结 ──────────────────────────────────────────────────
   const double fps = elapsed > 0 ? static_cast<double>(total) / elapsed : 0.0;
   std::printf("\n\n──────── 录制结束 ────────\n");
   std::printf("  见到 %llu 帧 / %.1f s = %.1f fps\n",
@@ -367,8 +317,6 @@ int main(int argc, char ** argv) {
     return 1;
   }
 
-  // 回放的 dt 是按 --replay-fps 算的，不是按真实录制帧率 —— 所以把这个
-  // 数打出来，让回放时的时序和录制时一致（EKF 的 dt 才对得上）。
   std::printf("\n回放时用：\n  --replay %s --replay-fps %.1f\n", a.out.c_str(), fps);
   if (have_serial) {
     std::printf("\n外参标定（先跑 calib_intrinsic.py 拿到内参）：\n"

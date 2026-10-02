@@ -23,7 +23,7 @@ bool hasImageExt(const std::string & p) {
          ext == ".tif" || ext == ".tiff";
 }
 
-}  // namespace
+}
 
 std::string saveFrame(const std::string & dir, int index, const cv::Mat & rgb) {
   if (rgb.empty()) return {};
@@ -34,8 +34,6 @@ std::string saveFrame(const std::string & dir, int index, const cv::Mat & rgb) {
   std::snprintf(name, sizeof(name), "%06d.png", index);
   const std::string path = (std::filesystem::path(dir) / name).string();
 
-  // cv::imwrite 按 BGR 解释写入，所以先把 RGB 转成 BGR，
-  // 这样读回来再转一次就还原了。
   cv::Mat bgr;
   cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
   if (!cv::imwrite(path, bgr)) return {};
@@ -58,7 +56,6 @@ bool ReplaySource::open() {
     if (hasImageExt(p)) files_.push_back(p);
   }
 
-  // 按文件名排序 —— 保存时用的是 %06d 序号，所以字典序 == 时间序
   std::sort(files_.begin(), files_.end());
 
   if (files_.empty()) {
@@ -81,7 +78,6 @@ void ReplaySource::close() {
 std::optional<Frame> ReplaySource::grab(int timeout_ms) {
   if (!opened_ || files_.empty()) return std::nullopt;
 
-  // 按配置的帧率限速，让回放的时序和真相机一致（dt_ 才有意义）
   const uint64_t period_ns =
       cfg_.fps > 0.1 ? static_cast<uint64_t>(1e9 / cfg_.fps) : 0;
 
@@ -106,7 +102,6 @@ std::optional<Frame> ReplaySource::grab(int timeout_ms) {
   cv::Mat img = cv::imread(files_[cursor_], cv::IMREAD_COLOR);
   cursor_++;
   if (img.empty()) {
-    // 读失败就跳过这一张，不要卡住整条流水线
     return std::nullopt;
   }
 
@@ -120,4 +115,4 @@ std::optional<Frame> ReplaySource::grab(int timeout_ms) {
   return f;
 }
 
-}  // namespace autoaim::bsp
+}

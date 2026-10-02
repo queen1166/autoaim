@@ -1,13 +1,3 @@
-// 检测调参工具：实时看检测结果，滑动条调二值化阈值。
-//
-// 现场光照和上游实验室完全不同，binary_thres 必须重调。
-// 这个工具让你一边拖滑动条一边看角点，比改代码重编译快得多。
-//
-// 用法:
-//   tool_detect_view <图像目录> [--no-loop]
-//   tool_detect_view <单张图>
-//
-// 按键：q 退出，空格暂停/继续，[ ] 切换红蓝，s 保存当前帧
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -25,10 +15,9 @@ using namespace autoaim;
 namespace {
 
 int g_thres = 160;
-int g_color = 0;  // 0 = RED
+int g_color = 0;
 bool g_paused = false;
 
-// C++17 没有 std::string::ends_with
 bool endsWith(const std::string & s, const std::string & suffix) {
   return s.size() >= suffix.size() &&
          s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -40,7 +29,7 @@ detect::Detector makeDetector() {
   return detect::Detector(g_thres, g_color, lp, ap);
 }
 
-}  // namespace
+}
 
 int main(int argc, char ** argv) {
   if (argc < 2) {
@@ -54,7 +43,6 @@ int main(int argc, char ** argv) {
     if (std::string(argv[i]) == "--no-loop") loop = false;
   }
 
-  // 传的是单张图就直接读一次，传目录就走回放
   const bool single_image = endsWith(path, ".png") || endsWith(path, ".jpg") ||
                             endsWith(path, ".jpeg") || endsWith(path, ".bmp");
 
@@ -79,7 +67,6 @@ int main(int argc, char ** argv) {
       cv::Mat canvas;
       cv::cvtColor(canvas_rgb, canvas, cv::COLOR_RGB2BGR);
 
-      // 左上角把二值图缩略图叠上去，直观看阈值效果
       if (!detector.binary_img.empty()) {
         cv::Mat small;
         cv::resize(detector.binary_img, small, cv::Size(320, 240));
@@ -102,7 +89,6 @@ int main(int argc, char ** argv) {
     return 0;
   }
 
-  // 目录模式：回放
   bsp::ReplaySource::Config rc;
   rc.dir = path;
   rc.fps = 30.0;

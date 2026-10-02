@@ -1,9 +1,3 @@
-// Copyright (C) 2022 ChenJun
-// Copyright (C) 2024 Zheng Yu
-// Licensed under the MIT License.
-//
-// 派生自 rm_auto_aim/armor_tracker/src/extended_kalman_filter.cpp
-// 改动：仅命名空间。逻辑逐字未改。
 
 #include "modules/tracker/extended_kalman_filter.h"
 
@@ -32,7 +26,6 @@ void ExtendedKalmanFilter::setStateInflated(const Eigen::VectorXd & x0,
   x_post = x0;
   if (p_factor > 1.0) {
     P_post *= p_factor;
-    // 只放大对角，避免非对角项被同步放大后失去正定性
     for (int i = 0; i < n; ++i) {
       for (int j = 0; j < n; ++j) {
         if (i != j) P_post(i, j) *= 0.5;
@@ -47,7 +40,6 @@ Eigen::MatrixXd ExtendedKalmanFilter::predict() {
   x_pri = f(x_post);
   P_pri = F * P_post * F.transpose() + Q;
 
-  // handle the case when there will be no measurement before the next predict
   x_post = x_pri;
   P_post = P_pri;
 
@@ -64,4 +56,4 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd & z) {
   return x_post;
 }
 
-}  // namespace autoaim::tracker
+}

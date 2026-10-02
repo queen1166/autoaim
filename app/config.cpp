@@ -9,7 +9,6 @@ namespace autoaim::config {
 
 namespace {
 
-// 简单的 --key value 解析。够用，且不需要任何依赖。
 bool wantValue(int i, int argc, char ** argv) {
   if (i + 1 >= argc) {
     std::fprintf(stderr, "参数 %s 缺少值\n", argv[i]);
@@ -18,7 +17,7 @@ bool wantValue(int i, int argc, char ** argv) {
   return true;
 }
 
-}  // namespace
+}
 
 void printHelp(const char * prog) {
   std::printf(
@@ -71,70 +70,70 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
     if (a == "-h" || a == "--help") {
       printHelp(argv[0]);
       return false;
-    } else if (a == "--replay") {
+    } else if (a == "--replay") { //--replay <目录>用图片目录做离线回放
       if (!wantValue(i, argc, argv)) return false;
       cfg.camera.kind = CameraKind::REPLAY;
       cfg.camera.replay_dir = argv[++i];
-    } else if (a == "--replay-fps") {
+    } else if (a == "--replay-fps") { //--replay-fps <fps>回放帧率
       if (!wantValue(i, argc, argv)) return false;
       cfg.camera.replay_fps = std::atof(argv[++i]);
-    } else if (a == "--no-loop") {
+    } else if (a == "--no-loop") {//--no-loop回放不循环
       cfg.camera.replay_loop = false;
-    } else if (a == "--hik") {
+    } else if (a == "--hik") {//--hik用海康相机
       cfg.camera.kind = CameraKind::HIK;
-    } else if (a == "--exposure") {
+    } else if (a == "--exposure") {//--exposure <us> 曝光时间
       if (!wantValue(i, argc, argv)) return false;
       cfg.camera.exposure_us = static_cast<float>(std::atof(argv[++i]));
-    } else if (a == "--gain") {
+    } else if (a == "--gain") {//--gain <g> 增益
       if (!wantValue(i, argc, argv)) return false;
       cfg.camera.gain = static_cast<float>(std::atof(argv[++i]));
-    } else if (a == "--device") {
+    } else if (a == "--device") {//--device <路径> 串口设备
       if (!wantValue(i, argc, argv)) return false;
       cfg.serial.device = argv[++i];
-    } else if (a == "--tx-hz") {
+    } else if (a == "--tx-hz") {//--tx-hz <hz> 发送频率
       if (!wantValue(i, argc, argv)) return false;
       cfg.serial.tx_hz = std::atoi(argv[++i]);
       if (cfg.serial.tx_hz <= 0 || cfg.serial.tx_hz > 1000) {
         std::fprintf(stderr, "--tx-hz 要在 1~1000 之间\n");
         return false;
       }
-    } else if (a == "--thres") {
+    } else if (a == "--thres") {//--thres <n> 二值化阈值
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.binary_thres = std::atoi(argv[++i]);
-    } else if (a == "--armor-w") {
+    } else if (a == "--armor-w") {//--armor-w <mm> 两灯条中心距
       if (!wantValue(i, argc, argv)) return false;
       const float w = static_cast<float>(std::atof(argv[++i]));
       cfg.solver.geometry.small_width = w;
       cfg.solver.geometry.large_width = w;
-    } else if (a == "--armor-h") {
+    } else if (a == "--armor-h") {//--armor-h <mm> 灯条长度
       if (!wantValue(i, argc, argv)) return false;
       const float h = static_cast<float>(std::atof(argv[++i]));
       cfg.solver.geometry.small_height = h;
       cfg.solver.geometry.large_height = h;
-    } else if (a == "--cam-pitch") {
+    } else if (a == "--cam-pitch") {//--cam-pitch <deg> 相机俯仰安装角
       if (!wantValue(i, argc, argv)) return false;
       cfg.extrinsic.cam_pitch_deg = std::atof(argv[++i]);
-    } else if (a == "--cam-yaw") {
+    } else if (a == "--cam-yaw") {//--cam-yaw <deg> 相机偏航安装角
       if (!wantValue(i, argc, argv)) return false;
       cfg.extrinsic.cam_yaw_deg = std::atof(argv[++i]);
-    } else if (a == "--cam-roll") {
+    } else if (a == "--cam-roll") {//--cam-roll <deg> 相机翻滚安装角
       if (!wantValue(i, argc, argv)) return false;
       cfg.extrinsic.cam_roll_deg = std::atof(argv[++i]);
-    } else if (a == "--fx") {
+    } else if (a == "--fx") {//--fx <f> X轴焦距
       if (!wantValue(i, argc, argv)) return false;
       cfg.solver.camera_matrix[0] = std::atof(argv[++i]);
-    } else if (a == "--fy") {
+    } else if (a == "--fy") {//--fy <f> Y轴焦距
       if (!wantValue(i, argc, argv)) return false;
       cfg.solver.camera_matrix[4] = std::atof(argv[++i]);
-    } else if (a == "--cx") {
+    } else if (a == "--cx") {//--cx <f> X轴主点
       if (!wantValue(i, argc, argv)) return false;
       cfg.solver.camera_matrix[2] = std::atof(argv[++i]);
-    } else if (a == "--cy") {
+    } else if (a == "--cy") {//--cy <f> Y轴主点
       if (!wantValue(i, argc, argv)) return false;
       cfg.solver.camera_matrix[5] = std::atof(argv[++i]);
-    } else if (a == "--enable-tracker") {
+    } else if (a == "--enable-tracker") {//--enable-tracker 启用EKF跟踪器
       cfg.enable_tracker = true;
-    } else if (a == "--rotation") {
+    } else if (a == "--rotation") {//--rotation <mode> 跟踪器旋转模式： carousel | self_spin | auto
       if (!wantValue(i, argc, argv)) return false;
       const std::string m = argv[++i];
       if (m == "carousel") {
@@ -147,11 +146,12 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
         std::fprintf(stderr, "--rotation 只能是 carousel / self_spin / auto\n");
         return false;
       }
-    } else if (a == "--enable-fire") {
+      //-----------------三个运行模式-------------
+    } else if (a == "--enable-fire") {//--enable-fire 启用射击
       cfg.enable_fire = true;
-    } else if (a == "--debug-view") {
+    } else if (a == "--debug-view") {//--debug-view 启用调试视图
       cfg.debug_view = true;
-    } else if (a == "--debug-dump") {
+    } else if (a == "--debug-dump") {//--debug-dump 启用调试转储
       cfg.debug_dump = true;
     } else {
       std::fprintf(stderr, "未知参数: %s\n\n", a.c_str());
@@ -160,11 +160,10 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
     }
   }
 
-  // 开了开火就必须有跟踪（或至少明确知道自己在做什么）
   if (cfg.enable_fire) {
     cfg.fire.require_tracking = cfg.enable_tracker;
   }
   return true;
 }
 
-}  // namespace autoaim::config
+}

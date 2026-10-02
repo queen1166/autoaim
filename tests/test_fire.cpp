@@ -1,8 +1,3 @@
-// 开火决策测试。纯逻辑，没有硬件依赖。
-//
-// 重点是两条：
-//   1. yaw 的角差必须做归一化 —— 否则 179° 和 -179° 会算成 358° 的假误差
-//   2. 节流：协议没有"已发射"反馈，只能靠 min_interval_s 硬控
 
 #include <cmath>
 #include <cstdio>
@@ -30,10 +25,9 @@ AimResult aimAt(double yaw_deg, double pitch_deg) {
   return r;
 }
 
-}  // namespace
+}
 
 int main() {
-  // ── 用例 1：没对准就不开火 ────────────────────────────────────
   std::printf("用例 1：角误差超容差 → 不开火\n");
   {
     FireDecision fd;
@@ -46,19 +40,16 @@ int main() {
                 fd.lastPitchErrDeg());
   }
 
-  // ── 用例 2：对准了但持续时间不够 → 不开火 ──────────────────────
   std::printf("用例 2：刚对准（< min_converge_s）→ 不开火\n");
   {
     FireConfig cfg;
     cfg.min_converge_s = 0.10;
     FireDecision fd(cfg);
     int fired = 0;
-    // 只对准 50ms（5 帧）
     for (int i = 0; i < 5; ++i) fired += fd.update(aimAt(0.5, 0.5), 0.0, 0.0, true, i * 0.01, 0.0);
     check(fired == 0, "50ms 内没有请求");
   }
 
-  // ── 用例 3：对准并稳定 → 开火 ─────────────────────────────────
   std::printf("用例 3：对准并稳定 100ms → 开火，且按 fire_hold_s 持续\n");
   {
     FireConfig cfg;
@@ -73,12 +64,10 @@ int main() {
     }
     std::printf("       首次请求在第 %d 帧（%.0f ms），共高电平 %d 帧（%.0f ms）\n",
                 first_fire_frame, first_fire_frame * 10.0, fired, fired * 10.0);
-    // 收敛 100ms 后开始，持续 150ms → 大约 25 帧
     check(first_fire_frame >= 10, "等到收敛时间之后才开火");
     check(fired >= 14 && fired <= 17, "fire_flag 高电平持续约 150ms");
   }
 
-  // ── 用例 4：节流 ─────────────────────────────────────────────
   std::printf("用例 4：min_interval_s = 0.9 的节流\n");
   {
     FireConfig cfg;
@@ -87,21 +76,19 @@ int main() {
     FireDecision fd(cfg);
     int shots = 0;
     int last_high = 0;
-    // 跑 3 秒，全程对准
     for (int i = 0; i < 300; ++i) {
       const int f = fd.update(aimAt(0.0, 0.0), 0.0, 0.0, true, i * 0.01, 0.0);
-      if (f && !last_high) shots++;  // 上升沿算一次
+      if (f && !last_high) shots++;
       last_high = f;
     }
     std::printf("       3 秒内请求了 %d 次（间隔 0.9s+0.15s 保持 → 约 3 次）\n", shots);
     check(shots >= 2 && shots <= 4, "节流生效");
   }
 
-  // ── 用例 5：yaw 角差必须归一化 ────────────────────────────────
   std::printf("用例 5：aim=179°, gimbal=-179° → 真实差 2°，应当开火\n");
   {
     FireConfig cfg;
-    cfg.yaw_tol_deg = 3.0;  // 2° 的差要落在容差内才测得出"跨 π 也能对准"
+    cfg.yaw_tol_deg = 3.0;
     FireDecision fd(cfg);
     int fired = 0;
     for (int i = 0; i < 40; ++i) {
@@ -113,11 +100,10 @@ int main() {
     check(fired > 0, "确实开火了");
   }
 
-  // ── 用例 6：max_shots 上限 ───────────────────────────────────
   std::printf("用例 6：max_shots 上限\n");
   {
     FireConfig cfg;
-    cfg.min_interval_s = 0.05;  // 加快节奏
+    cfg.min_interval_s = 0.05;
     cfg.fire_hold_s = 0.02;
     cfg.max_shots = 5;
     FireDecision fd(cfg);
@@ -129,17 +115,15 @@ int main() {
     check(fd.shotsRequested() == cfg.max_shots, "到上限就停");
   }
 
-  // ── 用例 7：invalid 的瞄准结果不开火 ─────────────────────────
   std::printf("用例 7：aim.valid = false → 不开火\n");
   {
     FireDecision fd;
-    AimResult bad;  // 默认 valid = false
+    AimResult bad;
     int fired = 0;
     for (int i = 0; i < 100; ++i) fired += fd.update(bad, 0.0, 0.0, true, i * 0.01, 0.0);
     check(fired == 0, "没有请求");
   }
 
-  // ── 用例 8：require_tracking ────────────────────────────────
   std::printf("用例 8：require_tracking = true 时跟踪丢失不开火\n");
   {
     FireConfig cfg;
@@ -147,19 +131,15 @@ int main() {
     FireDecision fd(cfg);
     int fired = 0;
     for (int i = 0; i < 100; ++i)
-      fired += fd.update(aimAt(0.0, 0.0), 0.0, 0.0, /*tracking=*/false, i * 0.01, 0.0);
+      fired += fd.update(aimAt(0.0, 0.0), 0.0, 0.0, false, i * 0.01, 0.0);
     check(fired == 0, "跟踪不可用时不开火");
 
     fired = 0;
     for (int i = 0; i < 100; ++i)
-      fired += fd.update(aimAt(0.0, 0.0), 0.0, 0.0, /*tracking=*/true, i * 0.01, 0.0);
+      fired += fd.update(aimAt(0.0, 0.0), 0.0, 0.0, true, i * 0.01, 0.0);
     check(fired > 0, "跟踪可用后开火");
   }
 
-  // ── 用例 9：云台反馈过期 → 绝不开火 ───────────────────────────
-  // 安全相关：串口断线时 latest_feedback_ 会一直返回最后一帧，角度冻住。
-  // 那一刻若恰好接近指令角度，不开火判定就会一直请求开火，
-  // 而云台实际在哪、还在不在，完全不知道。
   std::printf("用例 9：反馈过期 → 不开火（安全）\n");
   {
     FireConfig cfg;

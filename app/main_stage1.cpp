@@ -1,14 +1,3 @@
-// ─────────────────────────────────────────────────────────────
-// 阶段 1 最小测试程序
-//
-// 干的事：以 100 Hz 发目标帧让云台 yaw 缓慢扫动，
-//         同时用另一个线程收 30 字节反馈帧并打印真实角度。
-//
-// 成功现象：云台跟着扫动，终端里的 yaw 数值跟着变。
-//
-// 云台不动？→ 按一下【鼠标右键】，进入视觉控制。
-// 本程序 fire_flag 恒为 0，不会发射。
-// ─────────────────────────────────────────────────────────────
 
 #include <atomic>
 #include <chrono>
@@ -34,12 +23,10 @@ uint64_t now_ns() {
             .count());
 }
 
-// 扫动参数：先给小幅度，确认符号方向之后再加大
 constexpr double kSweepDeg    = 15.0;
-constexpr double kSweepPeriod = 6.0;    // 一个来回几秒
+constexpr double kSweepPeriod = 6.0;
 constexpr int    kTxHz        = 100;
 
-// ── 接收线程 ────────────────────────────────────────────────
 void rx_loop(autoaim::bsp::SerialPort& port) {
     srm::FrameParser parser;
     uint8_t buf[256];
@@ -51,7 +38,6 @@ void rx_loop(autoaim::bsp::SerialPort& port) {
         parser.feed(
             buf, static_cast<size_t>(n),
             [](const srm::GimbalFeedback& fb) {
-                // 注意：这里只打印。真实上位机里发送线程绝不能碰 IO。
                 std::printf(
                     "\r反馈 yaw=%8.2f  pitch=%7.2f  roll=%7.2f  "
                     "弹速=%5.1f  mode=%d  color=%d      ",
@@ -63,10 +49,9 @@ void rx_loop(autoaim::bsp::SerialPort& port) {
     }
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
-    // 建议改用 /dev/serial/by-id/usb-... ：重新插拔后编号可能变化
     const std::string dev = (argc > 1) ? argv[1] : "/dev/ttyACM0";
 
     autoaim::bsp::SerialPort port;
@@ -93,10 +78,8 @@ int main(int argc, char** argv) {
     const auto t0 = std::chrono::steady_clock::now();
 
     while (g_running) {
-        // 记下本次循环的目标时刻，用于定频（sleep_until 比 sleep_for 准）
         const auto next = std::chrono::steady_clock::now() + dt;
 
-        // 三角波：-A → +A → -A
         const double t =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
                 .count();

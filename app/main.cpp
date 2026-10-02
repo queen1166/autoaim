@@ -1,12 +1,3 @@
-// 自瞄上位机主程序。
-//
-// 默认【不开火】。确认瞄得准之后再加 --enable-fire。
-//
-// 安全提示写在这里，因为这是最后一道软件防线：
-//   · fire_flag 只是视觉侧请求，实际发射还需要下位机火控 + 摩擦轮状态
-//     + 鼠标左键的人工许可（规则 §3.3）
-//   · 未获安全员许可不得发射（规则 §5）
-//   · 本程序在丢失目标时只保持角度、绝不清零、绝不请求开火
 
 #include <atomic>
 #include <chrono>
@@ -49,12 +40,12 @@ void printStats(const autoaim::app::AutoAimApp & application, double elapsed_s) 
       static_cast<unsigned long long>(s.fire_requests));
 }
 
-}  // namespace
+}
 
 int main(int argc, char ** argv) {
   autoaim::config::Config cfg;
   if (!autoaim::config::parseArgs(argc, argv, cfg)) {
-    return 1;  // 打印了帮助或参数错误
+    return 1;
   }
 
   if (cfg.camera.kind == autoaim::config::CameraKind::HIK &&
@@ -76,8 +67,6 @@ int main(int argc, char ** argv) {
   const auto t0 = std::chrono::steady_clock::now();
   auto next_report = t0 + std::chrono::seconds(5);
 
-  // 退出条件有两个：收到信号，或者【任意一个工作线程自己收工了】
-  // （回放播完、串口写失败…）。少了后者的话 --no-loop 会一直挂着。
   while (g_running.load() && application.running()) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     if (std::chrono::steady_clock::now() >= next_report) {

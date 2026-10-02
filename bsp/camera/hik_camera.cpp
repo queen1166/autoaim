@@ -2,7 +2,6 @@
 
 #ifdef AUTOAIM_HAVE_MVS
 
-// 海康 MVS SDK。头文件在 /opt/MVS/include，库在 /opt/MVS/lib/64。
 #include "MvCameraControl.h"
 
 #include <opencv2/core.hpp>
@@ -14,12 +13,12 @@ namespace autoaim::bsp {
 
 namespace {
 
-// 把 SDK 的错误码打印成人能看的东西
 void printError(const char * what, int ret) {
   std::fprintf(stderr, "[hik] %s 失败，错误码 0x%08X\n", what,
                static_cast<unsigned int>(ret));
 }
 
+//问系统装了哪些相机
 bool selectFirstDevice(MV_CC_DEVICE_INFO_LIST & list) {
   const int ret = MV_CC_EnumDevices(MV_USB_DEVICE | MV_GIGE_DEVICE, &list);
   if (ret != MV_OK) {
@@ -34,7 +33,7 @@ bool selectFirstDevice(MV_CC_DEVICE_INFO_LIST & list) {
   return true;
 }
 
-}  // namespace
+}
 
 HikCamera::~HikCamera() { close(); }
 
@@ -59,11 +58,9 @@ bool HikCamera::open() {
     return false;
   }
 
-  // 关触发：连续采集
   ret = MV_CC_SetEnumValue(handle_, "TriggerMode", 0);
   if (ret != MV_OK) printError("SetEnumValue(TriggerMode)", ret);
 
-  // ⭐ 关自动曝光
   ret = MV_CC_SetEnumValue(handle_, "ExposureAuto", cfg_.auto_exposure ? 2 : 0);
   if (ret != MV_OK) printError("SetEnumValue(ExposureAuto)", ret);
 
@@ -73,8 +70,6 @@ bool HikCamera::open() {
   ret = MV_CC_SetFloatValue(handle_, "Gain", cfg_.gain);
   if (ret != MV_OK) printError("SetFloatValue(Gain)", ret);
 
-  // 直接要 RGB8，省掉一次转换 —— 检测器要求 RGB 输入。
-  // 若相机不支持该格式，SetEnumValue 会返回错误，此时下面按 BGR 处理并转换。
   const int pixel_ret =
       MV_CC_SetEnumValue(handle_, "PixelFormat", PixelType_Gvsp_RGB8_Packed);
   is_rgb_native_ = (pixel_ret == MV_OK);
@@ -130,7 +125,6 @@ void HikCamera::close() {
 std::optional<Frame> HikCamera::grab(int timeout_ms) {
   if (handle_ == nullptr || payload_size_ == 0) return std::nullopt;
 
-  // 缓冲区按最大载荷分配，够用
   if (buffer_.size() < payload_size_) buffer_.resize(payload_size_);
 
   MV_FRAME_OUT_INFO_EX info;
@@ -141,11 +135,10 @@ std::optional<Frame> HikCamera::grab(int timeout_ms) {
 
   const int ret = MV_CC_GetOneFrameTimeout(handle_, buffer_.data(), payload_size_,
                                            &info, wait_ms);
-  if (ret != MV_OK) return std::nullopt;  // 超时或丢帧，交给上层重试
+  if (ret != MV_OK) return std::nullopt;
 
   if (info.nWidth == 0 || info.nHeight == 0) return std::nullopt;
 
-  // SDK 的缓冲一行可能带 padding，用 nWidth*nHeight*3 精确切出有效像素
   const size_t need = static_cast<size_t>(info.nWidth) * info.nHeight * 3;
   if (need > buffer_.size()) return std::nullopt;
 
@@ -162,6 +155,6 @@ std::optional<Frame> HikCamera::grab(int timeout_ms) {
   return f;
 }
 
-}  // namespace autoaim::bsp
+}
 
-#endif  // AUTOAIM_HAVE_MVS
+#endif

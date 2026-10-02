@@ -48,4 +48,4 @@ std::unique_ptr<CameraSource> makeCamera(const CameraSpec & spec) {
   return nullptr;
 }
 
-}  // namespace autoaim::bsp
+}

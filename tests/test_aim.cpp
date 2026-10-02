@@ -1,9 +1,3 @@
-// 瞄准层测试。
-//
-// 重点验证三件事：
-//   1. 弹道解算的正确性（自洽性检查，不是硬编码期望值）
-//   2. 提前量的方向对不对（转盘模式）
-//   3. 自旋模式下【不该】有提前量（位置固定，只有开火时机有意义）
 
 #include <Eigen/Dense>
 
@@ -34,7 +28,6 @@ void checkNear(double got, double want, double tol, const char * what) {
   if (!ok) g_failed++;
 }
 
-// [xc, v_xc, yc, v_yc, za, v_za, yaw, v_yaw, r]
 Eigen::VectorXd makeState(double xc, double yc, double za, double yaw, double v_yaw,
                           double r) {
   Eigen::VectorXd s = Eigen::VectorXd::Zero(tracker::kStateDim);
@@ -47,10 +40,9 @@ Eigen::VectorXd makeState(double xc, double yc, double za, double yaw, double v_
   return s;
 }
 
-}  // namespace
+}
 
 int main() {
-  // ── 用例 1：5m / 22m/s 的弹道补偿 ────────────────────────────
   std::printf("用例 1：弹道补偿\n");
   {
     const double th = AimSolver::ballisticPitch(5.0, 0.0, 22.0, 9.8);
@@ -58,7 +50,6 @@ int main() {
                 th * kRad2Deg);
     checkNear(th * kRad2Deg, 2.905, 0.05, "俯仰角");
 
-    // 自洽性：把解出的 θ 代回弹道方程 h = d*u - k*(1+u²)，残差应为 0
     const double d = 5.0, h = 0.0, v = 22.0, g = 9.8;
     const double k = g * d * d / (2 * v * v);
     const double u = std::tan(th);
@@ -67,7 +58,6 @@ int main() {
     checkNear(residual, 0.0, 1e-12, "弹道方程残差");
   }
 
-  // ── 用例 2：弹道随距离单调增长 ───────────────────────────────
   std::printf("用例 2：距离越远，补偿越大\n");
   {
     double prev = -1;
@@ -81,7 +71,6 @@ int main() {
     check(mono, "单调递增");
   }
 
-  // ── 用例 3：无跟踪器路径（最小闭环）───────────────────────────
   std::printf("用例 3：solveFromMeasurement —— 正前方 5m 的静止靶\n");
   {
     AimSolver solver;
@@ -89,12 +78,10 @@ int main() {
         solver.solveFromMeasurement(Eigen::Vector3d(5.0, 0.0, 0.0), 22.0);
     check(r.valid, "结果有效");
     checkNear(r.yaw_rad * kRad2Deg, 0.0, 1e-9, "yaw");
-    // 有弹道补偿时，pitch 不为 0，约 2.9°
     checkNear(r.pitch_rad * kRad2Deg, 2.905, 0.05, "pitch（含弹道）");
     checkNear(r.t_lead_s, 0.0, 1e-12, "t_lead = 0（无速度信息）");
   }
 
-  // ── 用例 4：关掉弹道，用经验偏置 ──────────────────────────────
   std::printf("用例 4：关掉弹道模型 + 经验偏置 3°\n");
   {
     AimConfig cfg;
@@ -106,9 +93,6 @@ int main() {
     checkNear(r.pitch_rad * kRad2Deg, 3.0, 1e-9, "pitch = 偏置");
   }
 
-  // ── 用例 5：转盘模式必须有提前量，且方向正确 ──────────────────
-  // v_yaw > 0 → 装甲板 yaw 增大 → 位置 ya = yc - r*sin(yaw) 变负（往右跑）
-  // → 瞄准角应当提前往负方向偏。
   std::printf("用例 5：转盘模式 r=0.5, v_yaw=+1.0 rad/s\n");
   {
     AimSolver solver;
@@ -129,7 +113,6 @@ int main() {
     check(yaw_deg < -1.0, "有提前量且方向为负（往右提前）");
     check(yaw_deg > -3.0, "提前量幅度合理（< 3°）");
 
-    // 独立复算一遍，验证不是自说自话
     const double t = r.t_lead_s;
     const double yaw_pred = 0.0 + 1.0 * t;
     const double xa = 5.0 - 0.5 * std::cos(yaw_pred);
@@ -137,9 +120,6 @@ int main() {
     checkNear(yaw_deg, std::atan2(ya, xa) * kRad2Deg, 1e-9, "与独立复算一致");
   }
 
-  // ── 用例 6：自旋模式【不该】有角度提前量 ──────────────────────
-  // r = 0 → 装甲板位置固定，无论 yaw 怎么转，瞄准点都不动。
-  // 这种情况下提前量对【角度】毫无意义，只有开火【时机】有意义。
   std::printf("用例 6：自旋模式 r=0 —— 角度不应有提前量\n");
   {
     AimSolver solver;
@@ -160,7 +140,6 @@ int main() {
               "两种路径 pitch 一致");
   }
 
-  // ── 用例 7：r=0 时 v_yaw 再大也不影响角度 ─────────────────────
   std::printf("用例 7：r=0 时换不同 v_yaw，角度不变\n");
   {
     AimSolver solver;
@@ -170,7 +149,6 @@ int main() {
     checkNear(a.pitch_rad * kRad2Deg, b.pitch_rad * kRad2Deg, 1e-9, "pitch 不变");
   }
 
-  // ── 用例 8：弹速异常值保护 ───────────────────────────────────
   std::printf("用例 8：弹速为 0 或 NaN 时不产生 inf/nan\n");
   {
     AimSolver solver;

@@ -24,51 +24,45 @@ speed_t to_speed(int baud) {
     }
 }
 
-} // namespace
+}
 
 SerialPort::~SerialPort() { close(); }
 
 bool SerialPort::open(const std::string& dev, int baud) {
     std::lock_guard<std::mutex> lock(life_mutex_);
-    closeUnlocked();   // 不能调 close()，会重复加锁死锁
+    closeUnlocked();
 
-    // O_NOCTTY  : 不要把本终端当作进程的控制终端
-    // O_NONBLOCK: 先非阻塞打开，避免某些设备因 DCD 信号让 open 挂死
-    const int fd = ::open(dev.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+    const int fd = ::open(dev.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);// 打开串口设备文件
     if (fd < 0) return false;
 
-    termios tty{};
-    if (::tcgetattr(fd, &tty) != 0) {
+    termios tty{};// 获取串口属性
+    if (::tcgetattr(fd, &tty) != 0) {// 获取串口属性失败
         ::close(fd);
         return false;
     }
 
-    // 原始模式：不做行处理、回显、特殊字符转换。
-    // 二进制协议必须走原始模式，否则 0x0A / 0x0D 会被改写。
     ::cfmakeraw(&tty);
 
-    tty.c_cflag |= (CLOCAL | CREAD);   // 忽略调制解调器控制线，启用接收
-    tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;                // 8 数据位
-    tty.c_cflag &= ~PARENB;            // 无校验
-    tty.c_cflag &= ~CSTOPB;            // 1 停止位
-    tty.c_cflag &= ~CRTSCTS;           // 无硬件流控
+    tty.c_cflag |= (CLOCAL | CREAD);// 设置本地连接和接收使能
+    tty.c_cflag &= ~CSIZE;// 清除数据位掩码
+    tty.c_cflag |= CS8;// 设置数据位为8位
+    tty.c_cflag &= ~PARENB;// 禁用奇偶校验
+    tty.c_cflag &= ~CSTOPB;// 禁用停止位
+    tty.c_cflag &= ~CRTSCTS;// 禁用RTS/CTS流控制
 
-    // 组帧由 FrameParser 负责，所以让 read 尽快返回：
-    tty.c_cc[VMIN]  = 0;
-    tty.c_cc[VTIME] = 0;
+    tty.c_cc[VMIN]  = 0;// 设置最小读取字节数为0
+    tty.c_cc[VTIME] = 0;// 设置读取超时时间为0
 
-    ::cfsetispeed(&tty, to_speed(baud));
-    ::cfsetospeed(&tty, to_speed(baud));
+    ::cfsetispeed(&tty, to_speed(baud));// 设置输入波特率
+    ::cfsetospeed(&tty, to_speed(baud));// 设置输出波特率
 
     if (::tcsetattr(fd, TCSANOW, &tty) != 0) {
         ::close(fd);
         return false;
     }
 
-    ::tcflush(fd, TCIOFLUSH);   // 丢掉打开前残留在缓冲里的字节
+    ::tcflush(fd, TCIOFLUSH);
 
-    // 回到阻塞模式；超时由 select() 控制。
     const int flags = ::fcntl(fd, F_GETFL, 0);
     ::fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
 
@@ -83,13 +77,10 @@ void SerialPort::close() {
 }
 
 void SerialPort::closeUnlocked() {
-    // exchange 保证只有一个线程真正执行 close
     const int fd = fd_.exchange(-1);
     if (fd >= 0) {
         ::close(fd);
     }
-    // 故意不清空 dev_：它是 std::string，clear() 会和读它的线程竞争，
-    // 而且清空对排查问题没有任何好处。
 }
 
 ssize_t SerialPort::write_bytes(const uint8_t* data, size_t len) {
@@ -103,9 +94,9 @@ ssize_t SerialPort::write_bytes(const uint8_t* data, size_t len) {
             written += static_cast<size_t>(n);
             continue;
         }
-        if (n < 0 && errno == EINTR) continue;   // 被信号打断，重试
+        if (n < 0 && errno == EINTR) continue;
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            ::usleep(200);                        // 输出缓冲满，稍等再试
+            ::usleep(200);
             continue;
         }
         return -1;
@@ -130,7 +121,7 @@ ssize_t SerialPort::read_bytes(uint8_t* buf, size_t len, int timeout_ms) {
     tv.tv_usec = (timeout_ms % 1000) * 1000;
 
     const int r = ::select(fd + 1, &rfds, nullptr, nullptr, &tv);
-    if (r == 0) return 0;                                  // 超时
+    if (r == 0) return 0;
     if (r < 0)  return (errno == EINTR) ? 0 : -1;
 
     const ssize_t n = ::read(fd, buf, len);
@@ -138,4 +129,4 @@ ssize_t SerialPort::read_bytes(uint8_t* buf, size_t len, int timeout_ms) {
     return n;
 }
 
-}  // namespace autoaim::bsp
+}
