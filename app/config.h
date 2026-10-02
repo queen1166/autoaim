@@ -26,6 +26,11 @@ struct CameraConfig {
   float exposure_us = 5000.0f;
   float gain = 10.0f;
   bool auto_exposure = false;
+
+  // 诊断用：>0 时在开流前把采集分辨率改成这个值；0 = 不动，用相机自己的。
+  // 为什么需要/为什么要小心，见 HikCamera::Config 里同名成员的注释。
+  int width = 0;
+  int height = 0;
 };
 
 // 串口配置

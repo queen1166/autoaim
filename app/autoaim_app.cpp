@@ -67,6 +67,8 @@ bool AutoAimApp::init() {
   spec.exposure_us = cfg_.camera.exposure_us;
   spec.gain = cfg_.camera.gain;
   spec.auto_exposure = cfg_.camera.auto_exposure;
+  spec.width = cfg_.camera.width;
+  spec.height = cfg_.camera.height;
 
   camera_ = bsp::makeCamera(spec);
   if (!camera_ || !camera_->open()) {

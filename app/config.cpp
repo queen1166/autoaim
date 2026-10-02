@@ -30,6 +30,11 @@ void printHelp(const char * prog) {
       "  --hik                  用海康相机（需要 MVS SDK）\n"
       "  --exposure <us>        曝光时间，微秒，默认 5000\n"
       "  --gain <g>             增益，默认 10\n"
+      "  --width <px>           压小采集宽度，默认用相机自己的\n"
+      "  --height <px>          压小采集高度，同上\n"
+      "                         ⚠️ 诊断用：`StartGrabbing` 报 0x80000006 时\n"
+      "                         拿来验证是不是内核 USB 缓冲上限；会让标定\n"
+      "                         内参失效，不是比赛配置\n"
       "\n"
       "串口:\n"
       "  --device <路径>        串口设备，默认 /dev/ttyACM0\n"
@@ -87,6 +92,12 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
     } else if (a == "--gain") {//--gain <g> 增益
       if (!wantValue(i, argc, argv)) return false;
       cfg.camera.gain = static_cast<float>(std::atof(argv[++i]));
+    } else if (a == "--width") {//--width <px> 压小采集宽度（诊断用）
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.camera.width = std::atoi(argv[++i]);
+    } else if (a == "--height") {//--height <px> 压小采集高度（诊断用）
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.camera.height = std::atoi(argv[++i]);
     } else if (a == "--device") {//--device <路径> 串口设备
       if (!wantValue(i, argc, argv)) return false;
       cfg.serial.device = argv[++i];
