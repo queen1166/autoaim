@@ -52,9 +52,13 @@ struct SerialConfig {
 
 // 检测配置
 struct DetectConfig {
-  DetectorKind kind = DetectorKind::TRADITIONAL;
+  // 默认走神经网络（教程 §5A.1 方案 B）：模型路径和各项参数在
+  // detect::YoloPoseConfig 里已经有默认值，不用传任何参数就能跑。
+  // 想显式用传统视觉加 --no-yolo；模型文件缺失时会自动回退（见 yolo_fallback_to_traditional）。
+  DetectorKind kind = DetectorKind::YOLO_POSE;
 
   int binary_thres = 160;
+  // 灯条颜色过滤：0=RED，1=BLUE，-1=ANY（不过滤，单靶板推荐）。
   int detect_color = 0;
 
   detect::Detector::LightParams light;
@@ -63,7 +67,8 @@ struct DetectConfig {
   bool single_light_fallback = true;
   int max_single_light_count = 3;
 
-  // YOLO-Pose（kind == YOLO_POSE 时生效）
+  // YOLO-Pose（kind == YOLO_POSE 时生效）。默认值就是仓库自带的那个装甲板模型，
+  // 见 detect::YoloPoseConfig 顶部的注释。
   detect::YoloPoseConfig yolo;
   bool yolo_fallback_to_traditional = true;  // 模型加载失败时退回传统视觉
 

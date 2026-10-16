@@ -6,6 +6,8 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <system_error>
 
 namespace autoaim::detect {
 
@@ -83,9 +85,12 @@ std::vector<Armor> YoloPoseDetector::decode(const cv::Mat & output, double ratio
   const int expect = 4 + cfg.num_classes + 4 * cfg.kpt_dim;
   if (channels != expect) {
     std::fprintf(stderr,
-                 "[yolo] 输出通道数 %d 与配置不符（期望 4 + %d 类 + 4×%d = %d）。\n"
-                 "       检查 --yolo-classes / --yolo-kpt-dim 是否和模型匹配。\n",
-                 channels, cfg.num_classes, cfg.kpt_dim, expect);
+                 "[yolo] 输出通道数 %d 与配置不符（%s 布局下期望 4 + %d 类 + 4×%d = %d）。\n"
+                 "       检查 --yolo-classes / --yolo-kpt-dim / --yolo-layout 是否和模型匹配。\n",
+                 channels,
+                 cfg.head_layout == HeadLayout::COLOR_CLASS_KPT ? "color-class-kpt"
+                                                                : "ultralytics",
+                 cfg.num_classes, cfg.kpt_dim, expect);
     return armors;
   }
 
@@ -94,14 +99,8 @@ std::vector<Armor> YoloPoseDetector::decode(const cv::Mat & output, double ratio
   std::vector<cv::Rect2d> boxes;
   std::vector<float> scores;
   std::vector<cv::Point2f> kpt_store;  // 4 点 × 每个候选
-  std::vector<char> kpt_ok;
 
   for (int n = 0; n < anchors; ++n) {
-    const float cx = out2d.at<float>(0, n);
-    const float cy = out2d.at<float>(1, n);
-    const float w = out2d.at<float>(2, n);
-    const float h = out2d.at<float>(3, n);
-
     float best_cls = 0.0f;
     for (int c = 0; c < cfg.num_classes; ++c) {
       best_cls = std::max(best_cls, out2d.at<float>(4 + c, n));
@@ -119,6 +118,20 @@ std::vector<Armor> YoloPoseDetector::decode(const cv::Mat & output, double ratio
     }
     if (!ok) continue;
 
+    // 框要在 letterbox 坐标系里算好，下面那段统一反变换才同样适用。
+    if (cfg.head_layout == HeadLayout::COLOR_CLASS_KPT) {
+      // 这个头没有 bbox 通道，前 4 通道是颜色分数，只能拿关键点的外接矩形当框。
+      // 直接读那 4 个分数会把所有框退化成原点附近 1px 的小框，NMS 互相压制。
+      boxes.emplace_back(cv::boundingRect(std::vector<cv::Point2f>(kpts, kpts + 4)));
+    } else {
+      const double cx = out2d.at<float>(0, n);
+      const double cy = out2d.at<float>(1, n);
+      const double w = out2d.at<float>(2, n);
+      const double h = out2d.at<float>(3, n);
+      boxes.emplace_back(cx - w / 2.0, cy - h / 2.0, w, h);
+    }
+    scores.push_back(best_cls);
+
     // letterbox 反变换回原图坐标。
     auto inv = [&](const cv::Point2f & p) {
       return cv::Point2f(static_cast<float>((p.x - pad_x) / ratio),
@@ -126,10 +139,7 @@ std::vector<Armor> YoloPoseDetector::decode(const cv::Mat & output, double ratio
     };
     for (auto & p : kpts) p = inv(p);
 
-    boxes.emplace_back(cx - w / 2.0, cy - h / 2.0, w, h);
-    scores.push_back(best_cls);
     for (const auto & p : kpts) kpt_store.push_back(p);
-    kpt_ok.push_back(1);
   }
 
   if (boxes.empty()) return armors;
@@ -166,6 +176,21 @@ bool YoloPoseDetector::load() {
   loaded_ = false;
   if (cfg_.model_path.empty()) return false;
 
+  // 先单独判存在性：readNetFromONNX 对"文件不存在"和"文件格式不对"抛的是同一类异常，
+  // 分不出来。默认模型路径是相对的，从 build/ 里跑就会落空——这是最常见的失败原因，
+  // 所以把绝对路径打出来，一眼能看出是当前目录不对。
+  std::error_code ec;
+  if (!std::filesystem::exists(cfg_.model_path, ec)) {
+    std::fprintf(stderr,
+                 "[yolo] 找不到模型文件: %s\n"
+                 "       （绝对路径 %s）\n"
+                 "       该文件被 .gitignore 排除，新 clone 的仓库里没有，见 "
+                 "models/pretrained/README.md。\n",
+                 cfg_.model_path.c_str(),
+                 std::filesystem::absolute(cfg_.model_path, ec).string().c_str());
+    return false;
+  }
+
   try {
     net_ = cv::dnn::readNetFromONNX(cfg_.model_path);
   } catch (const cv::Exception & e) {
@@ -181,9 +206,12 @@ bool YoloPoseDetector::load() {
   net_.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
   net_.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
   loaded_ = true;
-  std::printf("[yolo] 已加载 %s（输入 %dx%d，%d 类，关键点 %d 维）\n",
+  std::printf("[yolo] 已加载 %s（输入 %dx%d，%d 类，关键点 %d 维，%s 布局，输入缩放 %.6g）\n",
               cfg_.model_path.c_str(), cfg_.input_w, cfg_.input_h, cfg_.num_classes,
-              cfg_.kpt_dim);
+              cfg_.kpt_dim,
+              cfg_.head_layout == HeadLayout::COLOR_CLASS_KPT ? "color-class-kpt"
+                                                             : "ultralytics",
+              static_cast<double>(cfg_.input_scale));
   return true;
 }
 
@@ -196,7 +224,7 @@ std::vector<Armor> YoloPoseDetector::detect(const cv::Mat & rgb) {
   const cv::Mat input = letterbox(rgb, cfg_.input_w, cfg_.input_h, ratio, pad_x, pad_y);
 
   // Frame::image 是 RGB，所以默认不交换 R/B（见 YoloPoseConfig::input_is_bgr）。
-  cv::Mat blob = cv::dnn::blobFromImage(input, 1.0 / 255.0,
+  cv::Mat blob = cv::dnn::blobFromImage(input, cfg_.input_scale,
                                         cv::Size(cfg_.input_w, cfg_.input_h),
                                         cv::Scalar(), cfg_.input_is_bgr, false, CV_32F);
 

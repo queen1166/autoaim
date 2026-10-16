@@ -67,6 +67,8 @@ class AutoAimApp {
     uint64_t frames_grabbed = 0;
     uint64_t frames_processed = 0;
     uint64_t armors_found = 0;
+    uint64_t armors_matched = 0;  // 真正配对成功的装甲板数
+    uint64_t armors_single = 0;   // 单灯条回退出来的，PnP 一定会跳过
     uint64_t pnp_ok = 0;
     uint64_t pnp_rejected = 0;
     uint64_t yaw_fit_ok = 0;

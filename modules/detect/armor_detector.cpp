@@ -135,7 +135,11 @@ std::vector<Armor> Detector::matchLights(const std::vector<Light> & lights) {
 
   for (auto light_1 = lights.begin(); light_1 != lights.end(); light_1++) {
     for (auto light_2 = light_1 + 1; light_2 != lights.end(); light_2++) {
-      if (light_1->color != detect_color || light_2->color != detect_color) continue;
+      // ANY_COLOR 时不做颜色过滤（单靶板赛题推荐）。
+      if (detect_color != ANY_COLOR &&
+          (light_1->color != detect_color || light_2->color != detect_color)) {
+        continue;
+      }
 
       if (containLight(*light_1, *light_2, lights)) {
         continue;

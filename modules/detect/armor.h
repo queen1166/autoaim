@@ -11,6 +11,10 @@ namespace autoaim::detect {
 constexpr int RED = 0;
 constexpr int BLUE = 1;
 
+// 哨兵值：matchLights 见到它就不按颜色过滤，任何颜色的两根灯条都能配对。
+// 单靶板赛题（只有一块板）用它免疫灯条颜色分类的抖动。
+constexpr int ANY_COLOR = -1;
+
 enum class ArmorType { SMALL, LARGE, SINGLE, INVALID };
 
 inline const char * const ARMOR_TYPE_STR[] = {"small", "large", "single", "invalid"};

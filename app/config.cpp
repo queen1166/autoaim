@@ -45,6 +45,8 @@ void printHelp(const char * prog) {
       "\n"
       "算法:\n"
       "  --thres <n>            二值化阈值，默认 160（现场必须重调）\n"
+      "  --color <red|blue|any> 灯条颜色过滤，默认 red\n"
+      "                         单靶板配不出对时先试 any\n"
       "  --armor-w <mm>         两灯条中心距，默认 132（★ 必须实测反标）\n"
       "  --armor-h <mm>         灯条长度，默认 57（★ 必须实测反标）\n"
       "  --cam-pitch <deg>      相机俯仰安装角，负值向下，默认 -15\n"
@@ -56,12 +58,17 @@ void printHelp(const char * prog) {
       "  --no-yaw-fit           关掉 PnP 降自由度优化，退回完整 solvePnP\n"
       "  --armor-yaw-offset <deg> 装甲板朝向的 π 偏置；现场标 r 时用，见 README\n"
       "\n"
-      "探测（教程 §5A）：默认传统视觉；给了 --yolo 就用神经网络\n"
-      "  --yolo <模型.onnx>     YOLO-Pose 关键点模型\n"
+      "探测（教程 §5A）：默认用神经网络（仓库自带的装甲板模型）\n"
+      "  --no-yolo              改用传统视觉（二值化 + 灯条配对）\n"
+      "  --yolo <模型.onnx>     换成别的 YOLO-Pose 模型\n"
+      "                         默认 models/Infantry-v8n-opencv.onnx\n"
+      "  --yolo-layout <mode>   ultralytics | color-class-kpt，默认 color-class-kpt\n"
+      "                         会一次设好下面 4 项的默认值（见 RUNBOOK §5.6）\n"
       "  --yolo-w <px>          输入宽，默认 640\n"
-      "  --yolo-h <px>          输入高，默认 640\n"
-      "  --yolo-classes <n>     类别数，默认 1\n"
-      "  --yolo-kpt-dim <n>     每个关键点的数值个数，3=(x,y,conf)，默认 3\n"
+      "  --yolo-h <px>          输入高，默认 480（ultralytics 惯例是 640）\n"
+      "  --yolo-classes <n>     类别数，默认 9（ultralytics 惯例是 1）\n"
+      "  --yolo-kpt-dim <n>     每个关键点的数值个数，默认 2：3=(x,y,conf)\n"
+      "  --yolo-input-scale <f> 输入缩放，默认 1.0（ultralytics 惯例是 1/255）\n"
       "  --yolo-conf <f>        检出置信度门限，默认 0.25\n"
       "  --no-corner-refine     关掉 PCA 角点精修（教程 §5A.3）\n"
       "\n"
@@ -92,6 +99,13 @@ void printHelp(const char * prog) {
 }
 
 bool parseArgs(int argc, char ** argv, Config & cfg) {
+  // 记录哪些 --yolo-* 是显式给过的。收尾段按**最终** layout 给没给过的项填整组默认值，
+  // 于是 --yolo-layout 是一键切换，而显式值永远赢——两种书写顺序结果一致，
+  // 和 §5.1「后写的覆盖先写的」不冲突。
+  struct {
+    bool w = false, h = false, classes = false, kpt_dim = false, scale = false;
+  } yolo_set;
+
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
 
@@ -134,6 +148,19 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
     } else if (a == "--thres") {//--thres <n> 二值化阈值
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.binary_thres = std::atoi(argv[++i]);
+    } else if (a == "--color") {//--color <red|blue|any> 灯条颜色过滤
+      if (!wantValue(i, argc, argv)) return false;
+      const std::string c = argv[++i];
+      if (c == "red") {
+        cfg.detect.detect_color = detect::RED;
+      } else if (c == "blue") {
+        cfg.detect.detect_color = detect::BLUE;
+      } else if (c == "any") {
+        cfg.detect.detect_color = detect::ANY_COLOR;
+      } else {
+        std::fprintf(stderr, "--color 只能是 red / blue / any\n");
+        return false;
+      }
     } else if (a == "--armor-w") {//--armor-w <mm> 两灯条中心距
       if (!wantValue(i, argc, argv)) return false;
       const float w = static_cast<float>(std::atof(argv[++i]));
@@ -189,25 +216,46 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
     } else if (a == "--armor-yaw-offset") {//装甲板朝向的 π 偏置（现场标 r 时用）
       if (!wantValue(i, argc, argv)) return false;
       cfg.tracker.armor_yaw_offset_rad = std::atof(argv[++i]) * kDeg2Rad;
-    } else if (a == "--yolo") {//--yolo 用 YOLO-Pose 模型做探测
+    } else if (a == "--no-yolo") {//--no-yolo 显式改用传统视觉探测
+      cfg.detect.kind = DetectorKind::TRADITIONAL;
+    } else if (a == "--yolo") {//--yolo 换成别的 YOLO-Pose 模型（默认已经是神经网络）
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.kind = DetectorKind::YOLO_POSE;
       cfg.detect.yolo.model_path = argv[++i];
     } else if (a == "--yolo-w") {
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.yolo.input_w = std::atoi(argv[++i]);
+      yolo_set.w = true;
     } else if (a == "--yolo-h") {
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.yolo.input_h = std::atoi(argv[++i]);
+      yolo_set.h = true;
     } else if (a == "--yolo-classes") {
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.yolo.num_classes = std::atoi(argv[++i]);
+      yolo_set.classes = true;
     } else if (a == "--yolo-kpt-dim") {
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.yolo.kpt_dim = std::atoi(argv[++i]);
+      yolo_set.kpt_dim = true;
     } else if (a == "--yolo-conf") {
       if (!wantValue(i, argc, argv)) return false;
       cfg.detect.yolo.conf_thres = static_cast<float>(std::atof(argv[++i]));
+    } else if (a == "--yolo-layout") {//输出头布局，顺带决定输入缩放
+      if (!wantValue(i, argc, argv)) return false;
+      const std::string v = argv[++i];
+      if (v == "ultralytics") {
+        cfg.detect.yolo.head_layout = detect::HeadLayout::ULTRALYTICS;
+      } else if (v == "color-class-kpt") {
+        cfg.detect.yolo.head_layout = detect::HeadLayout::COLOR_CLASS_KPT;
+      } else {
+        std::fprintf(stderr, "--yolo-layout 只能是 ultralytics / color-class-kpt\n");
+        return false;
+      }
+    } else if (a == "--yolo-input-scale") {//覆盖 layout 决定的输入缩放
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.yolo.input_scale = static_cast<float>(std::atof(argv[++i]));
+      yolo_set.scale = true;
     } else if (a == "--no-corner-refine") {//关掉 PCA 角点精修
       cfg.detect.corner_refine.enable = false;
     } else if (a == "--no-mpc") {//关掉 MPC
@@ -244,6 +292,19 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
       printHelp(argv[0]);
       return false;
     }
+  }
+
+  // --yolo-layout 决定整套惯例值（输入尺寸 / 类别数 / kpt_dim / 输入缩放）。不放在
+  // 分支里做，是因为 layout 和别的 --yolo-* 谁先写都可能，放在收尾段才能保证
+  // "显式值永远赢" 与书写顺序无关。
+  {
+    auto & y = cfg.detect.yolo;
+    const bool ultra = y.head_layout == detect::HeadLayout::ULTRALYTICS;
+    if (!yolo_set.w) y.input_w = 640;
+    if (!yolo_set.h) y.input_h = ultra ? 640 : 480;
+    if (!yolo_set.classes) y.num_classes = ultra ? 1 : 9;
+    if (!yolo_set.kpt_dim) y.kpt_dim = ultra ? 3 : 2;
+    if (!yolo_set.scale) y.input_scale = ultra ? 1.0f / 255.0f : 1.0f;
   }
 
   if (cfg.enable_fire) {

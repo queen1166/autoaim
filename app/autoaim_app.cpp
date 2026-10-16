@@ -56,9 +56,17 @@ AutoAimApp::AutoAimApp(config::Config cfg)
     if (yolo->load()) {
       detector_ = std::move(yolo);
     } else if (!cfg_.detect.yolo_fallback_to_traditional) {
-      std::fprintf(stderr, "[app] YOLO 模型不可用，且未允许回退，探测将全部失败\n");
+      std::fprintf(stderr,
+                   "[app] YOLO 模型不可用: %s，且未允许回退，探测将全部失败\n",
+                   cfg_.detect.yolo.model_path.c_str());
     } else {
-      std::fprintf(stderr, "[app] YOLO 不可用 → 回退到传统视觉探测\n");
+      // 神经网络是默认路径，而模型文件被 .gitignore 排除，所以新 clone 的仓库一定
+      // 会落到这里。说清用的是哪个路径、以及这不是故障，免得被当成坏了。
+      std::fprintf(stderr,
+                   "[app] YOLO 模型不可用: %s → 回退到传统视觉探测。\n"
+                   "      该文件不在 Git 里（*.onnx 被排除），新 clone 的仓库都没有，属预期。\n"
+                   "      想显式走传统视觉、不要这行提示，加 --no-yolo。\n",
+                   cfg_.detect.yolo.model_path.c_str());
     }
   }
   if (!detector_) {
