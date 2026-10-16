@@ -57,6 +57,32 @@
 
 ---
 
+## 预训练模型：深大 RM26 装甲板模型
+
+- **仓库**：https://github.com/SZURPVision/26_NNDeployment_Lib_and_Detection_Models
+- **许可**：MIT License（仓库 `LICENSE` 文件，GitHub API 报 `spdx_id: MIT`）
+- **上游说明**：「RoboMaster26赛季的部署库与模型开源仓库」
+- **本仓库文件**：`models/Infantry-v8n-opencv.onnx`（12.7 MB）
+
+上游是 YOLOv8n-Pose 训出来的 4 关键点装甲板检测模型，经 OpenVINO 导出成 ONNX。
+本仓库转载的是**改写版**，对模型做了两处修改：
+
+| 改动 | 为什么 |
+| --- | --- |
+| 去掉首尾两个 `Cast` 节点，147 个 fp16 张量转 fp32 | 原始件在 `cv::dnn::readNetFromONNX` 处直接抛 `inputs.size() != 0`，加载就失败 |
+| 改写检测头（删掉非标量的 `Mul`/广播） | OpenCV **4.5.4** 的 DNN 只支持标量广播，原始件加载成功但 `forward()` 抛 `shape_utils.hpp:170` |
+
+改动细节、实测数据、以及为什么不能拿别的转换版本替换，见
+[`models/pretrained/README.md`](../models/pretrained/README.md)。
+
+**为什么随仓库分发**：它是 `--yolo` 的默认模型路径，程序不带参数启动就走这条路。
+不跟着仓库走的话，新 clone 的机器会静默回退传统视觉——功能还在，但不是设计意图。
+原始下载件 `models/Infantry-v8n.onnx` 不进仓库（它在 4.5.4 上会崩，提交等于埋雷）。
+
+规则书 §1 明确允许使用开源项目与预训练模型（无需申报）。
+
+---
+
 ## 本工程原创部分
 
 以下模块**不派生自任何外部项目**，是为本次校内赛新写的：

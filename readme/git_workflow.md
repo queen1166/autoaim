@@ -63,6 +63,9 @@ git clone git@github.com:queen1166/仓库名.git
 ```
 
 > 一条命令干三件事：下载全部代码 + 建立本地仓库 + 自动配好 `origin`。
+>
+> 📦 **装甲板模型随仓库一起下来**（`models/Infantry-v8n-opencv.onnx`，12.7 MB），
+> clone 完直接就能跑神经网络，不用另外下载或从别的电脑拷。`git add .` 会自动带上它。
 
 **以后每次**（仓库已存在，只要最新代码）：
 
