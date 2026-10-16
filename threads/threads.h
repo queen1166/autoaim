@@ -10,6 +10,7 @@ namespace autoaim::threads {
 struct Handles {
   std::thread camera;
   std::thread process;
+  std::thread plan;
   std::thread tx;
   std::thread rx;
 

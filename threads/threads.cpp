@@ -8,6 +8,7 @@ Handles start(app::AutoAimApp & app) {
   Handles h;
   h.rx = std::thread([&app] { app.rxLoop(); });
   h.tx = std::thread([&app] { app.txLoop(); });
+  h.plan = std::thread([&app] { app.planLoop(); });
   h.camera = std::thread([&app] { app.cameraLoop(); });
   h.process = std::thread([&app] { app.processLoop(); });
   return h;
@@ -16,6 +17,7 @@ Handles start(app::AutoAimApp & app) {
 void joinAll(Handles & h) {
   if (h.camera.joinable()) h.camera.join();
   if (h.process.joinable()) h.process.join();
+  if (h.plan.joinable()) h.plan.join();
   if (h.rx.joinable()) h.rx.join();
   if (h.tx.joinable()) h.tx.join();
 }

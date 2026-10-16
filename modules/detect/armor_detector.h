@@ -10,11 +10,12 @@
 #include <vector>
 
 #include "modules/detect/armor.h"
+#include "modules/detect/armor_detector_base.h"
 #include "modules/detect/number_classifier.h"
 
 namespace autoaim::detect {
 
-class Detector {
+class Detector : public ArmorDetectorBase {
  public:
   struct LightParams {
     double min_ratio = 0.1;
@@ -34,7 +35,9 @@ class Detector {
 
   Detector(int bin_thres, int color, const LightParams & l, const ArmorParams & a);
 
-  std::vector<Armor> detect(const cv::Mat & input);
+  std::vector<Armor> detect(const cv::Mat & input) override;
+
+  const char * name() const override { return "traditional"; }
 
   cv::Mat preprocessImage(const cv::Mat & input);
 
@@ -44,7 +47,7 @@ class Detector {
 
   cv::Mat getAllNumbersImage();
 
-  void drawResults(cv::Mat & img);
+  void drawResults(cv::Mat & img) override;
 
   int binary_thres = 160;
   int detect_color = RED;

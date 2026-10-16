@@ -75,11 +75,19 @@ def armor_pose(state_yaw, radius):
     """给定状态 yaw，返回装甲板中心与姿态矩阵（都在云台系）。
 
     几何关系来自 target_state.h：xa = xc - r*cos(yaw)。
-    装甲板法线朝外（背离旋转中心）。
+
+    ⚠️ 模型系 +x 的朝向约定（和跟踪器绑定，不能随便改）：
+    跟踪器取装甲板朝向的 yaw 用的是 R 的第一列 ——
+        yaw_measured = atan2(R[1,0], R[0,0]) = atan2(normal.y, normal.x)
+    而状态里 yaw 与位置的关系是 xa = xc - r*cos(yaw)。
+    两式要自洽就要求 normal = +c。若写成 normal = -c，测出来的 yaw 会整体
+    差一个 π，EKF 无法同时满足位置和朝向，会把半径硬撑到 r_max
+    （实测现象：r 估计成 0.4 而非真值 0.3，瞄准 yaw 摆幅偏大约 33%）。
+    上游 rm_auto_aim 用的是同一套约定，所以这里必须跟它对齐。
     """
     c = np.array([math.cos(state_yaw), math.sin(state_yaw), 0.0])
     center = CENTER - radius * c
-    normal = -c                                # 朝外
+    normal = c                                 # 见上面的约定说明
     up = np.array([0.0, 0.0, 1.0])
     left = np.cross(up, normal)
     R = np.column_stack([normal, left, up])    # 列 = 模型的 x/y/z 在云台系下的方向

@@ -23,28 +23,33 @@ void printStats(const autoaim::app::AutoAimApp & application, double elapsed_s) 
   std::printf(
       "\n──────── %.1f s ────────\n"
       "  取帧 %llu   处理 %llu (%.1f fps)\n"
-      "  检出装甲板 %llu   PnP 成功 %llu   被闸门拒绝 %llu\n"
+      "  检出装甲板 %llu   角点精修 %llu   PnP 成功 %llu (yaw 降自由度 %llu)   "
+      "被闸门拒绝 %llu\n"
       "  串口 发送 %llu   接收 %llu   重同步 %llu\n"
-      "  目标过期降级 %llu   跳变被拒 %llu   开火请求 %llu\n",
+      "  目标过期降级 %llu   跳变被拒 %llu   开火请求 %llu\n"
+      "  耗时 处理 %.1f ms   规划 %.1f ms   process_latency %.1f ms\n",
       elapsed_s,
       static_cast<unsigned long long>(s.frames_grabbed),
       static_cast<unsigned long long>(s.frames_processed), fps,
       static_cast<unsigned long long>(s.armors_found),
+      static_cast<unsigned long long>(s.corner_refined),
       static_cast<unsigned long long>(s.pnp_ok),
+      static_cast<unsigned long long>(s.yaw_fit_ok),
       static_cast<unsigned long long>(s.pnp_rejected),
       static_cast<unsigned long long>(s.tx_frames),
       static_cast<unsigned long long>(s.rx_frames),
       static_cast<unsigned long long>(s.rx_resync),
       static_cast<unsigned long long>(s.stale_cmds),
       static_cast<unsigned long long>(s.jump_rejected),
-      static_cast<unsigned long long>(s.fire_requests));
+      static_cast<unsigned long long>(s.fire_requests),
+      s.ms_process, s.ms_plan, s.ms_process_latency);
 }
 
 }
 
 int main(int argc, char ** argv) {
   autoaim::config::Config cfg;
-  if (!autoaim::config::parseArgs(argc, argv, cfg)) {
+  if (!autoaim::config::parseArgs(argc, argv, cfg)) {// 解析命令行失败或打印了帮助
     return 1;
   }
 
@@ -56,8 +61,8 @@ int main(int argc, char ** argv) {
     return 1;
   }
 
-  autoaim::app::AutoAimApp application(std::move(cfg));
-  if (!application.init()) return 1;
+  autoaim::app::AutoAimApp application(std::move(cfg));// 创建应用对象
+  if (!application.init()) return 1;// 初始化
 
   std::signal(SIGINT, onSignal);
   std::signal(SIGTERM, onSignal);

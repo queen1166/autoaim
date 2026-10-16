@@ -147,6 +147,85 @@ int main() {
     check(worst < 1e-9, "全程正确，没有在 ±π 处跳分支");
   }
 
+  std::printf("用例 8：R_gimbal2world 与配置角度的符号约定\n");
+  {
+    Attitude att;
+    att.yaw_rad = 20 * kDeg2Rad;
+    att.pitch_rad = 10 * kDeg2Rad;
+    att.roll_rad = 5 * kDeg2Rad;
+    const Eigen::Matrix3d R = R_gimbal2world(att);
+    checkNear((R.transpose() * R - Eigen::Matrix3d::Identity()).norm(), 0.0, 1e-12,
+              "R^T R = I");
+    checkNear(R.determinant(), 1.0, 1e-12, "det(R) = +1");
+
+    // yaw 单独转动时：+x → (cos yaw, sin yaw, 0)
+    Attitude yaw_only;
+    yaw_only.yaw_rad = 30 * kDeg2Rad;
+    const Eigen::Vector3d v = R_gimbal2world(yaw_only) * Eigen::Vector3d(1, 0, 0);
+    checkNear(v.x(), std::cos(30 * kDeg2Rad), 1e-12, "yaw=30° 时 x 分量");
+    checkNear(v.y(), std::sin(30 * kDeg2Rad), 1e-12, "yaw=30° 时 y 分量");
+
+    // pitch 单独转动时：+x → (cos p, 0, +sin p)。
+    // 注意：这里的 pitch 是**云台自己的姿态角**（来自下位机反馈），正值 = 抬头。
+    // 不要和 ExtrinsicConfig::cam_pitch_deg 搞混 —— 那是相机的安装俯角，
+    // 符号约定正好相反（负值 = 向下俯）。两者在 calib_extrinsic.py 里也是分开的。
+    Attitude pitch_only;
+    pitch_only.pitch_rad = 15 * kDeg2Rad;
+    const Eigen::Vector3d w = R_gimbal2world(pitch_only) * Eigen::Vector3d(1, 0, 0);
+    checkNear(w.z(), std::sin(15 * kDeg2Rad), 1e-12, "云台 pitch=+15° 时朝上");
+
+    // 相机安装俯角是另一回事：cam_pitch_deg = -15° → 光轴朝下
+    ExtrinsicConfig cam;
+    cam.cam_pitch_deg = -15.0;
+    checkNear((R_cam2gimbal(cam) * Eigen::Vector3d(0, 0, 1)).z(),
+              -std::sin(15 * kDeg2Rad), 1e-12, "cam_pitch=-15° 时光轴朝下");
+  }
+
+  std::printf("用例 9：世界系 — 姿态决定绝对角（漏掉这步就振荡的那个 bug）\n");
+  {
+    ExtrinsicConfig cfg;  // cam_pitch = -15°
+    cfg.cam_pitch_deg = 0.0;
+
+    // 相机零位系下目标正前方 5m
+    const cv::Mat tvec = tvecOf(0, 0, 5.0);
+    const Eigen::Vector3d p_zero = cameraToGimbal(tvec, cfg);
+    checkNear(yawPitchFromGimbalPoint(p_zero).x() * kRad2Deg, 0.0, 1e-9,
+              "零位系下 yaw = 0");
+
+    // 云台转到 yaw = 30°：同一个相机系观测，世界系绝对角必须跟着变成 30°
+    Attitude att;
+    att.yaw_rad = 30 * kDeg2Rad;
+    const Eigen::Vector3d p_world = cameraToWorld(tvec, cfg, att);
+    const double yaw_world = yawPitchFromGimbalPoint(p_world).x() * kRad2Deg;
+    std::printf("       云台 yaw=30° → 世界系绝对角 %.4f°（应 30°）\n", yaw_world);
+    checkNear(yaw_world, 30.0, 1e-9, "绝对角 = 云台角 + 相对角");
+
+    // 单位姿态必须退化成旧行为
+    const Eigen::Vector3d p_same = cameraToWorld(tvec, cfg, Attitude{});
+    checkNear((p_same - p_zero).norm(), 0.0, 1e-12, "零姿态 = 云台零位系");
+  }
+
+  std::printf("用例 10：attitudeToQuat ↔ attitudeFromQuat 往返\n");
+  {
+    double worst = 0;
+    for (double yd : {-170.0, -30.0, 0.0, 45.0, 170.0}) {
+      for (double pd : {-40.0, -10.0, 0.0, 25.0}) {
+        for (double rd : {-20.0, 0.0, 20.0}) {
+          Attitude a;
+          a.yaw_rad = yd * kDeg2Rad;
+          a.pitch_rad = pd * kDeg2Rad;
+          a.roll_rad = rd * kDeg2Rad;
+          const Attitude b = attitudeFromQuat(attitudeToQuat(a));
+          worst = std::max(worst, std::abs(b.yaw_rad - a.yaw_rad));
+          worst = std::max(worst, std::abs(b.pitch_rad - a.pitch_rad));
+          worst = std::max(worst, std::abs(b.roll_rad - a.roll_rad));
+        }
+      }
+    }
+    std::printf("       最大往返误差 = %.3e rad\n", worst);
+    check(worst < 1e-12, "往返一致");
+  }
+
   std::printf("\n%s\n", g_failed == 0 ? "全部通过" : "有失败项");
   return g_failed == 0 ? 0 : 1;
 }

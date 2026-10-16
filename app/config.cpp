@@ -1,5 +1,7 @@
 #include "app/config.h"
 
+#include "modules/common/units.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -50,6 +52,27 @@ void printHelp(const char * prog) {
       "  --fx --fy --cx --cy    相机内参（★ 必须自己标定）\n"
       "  --enable-tracker       启用跟踪器（默认关）\n"
       "  --rotation <mode>      carousel | self_spin | auto（默认 auto）\n"
+      "  --armor-pitch <deg>    装甲板自身俯仰（机械常量），默认 15\n"
+      "  --no-yaw-fit           关掉 PnP 降自由度优化，退回完整 solvePnP\n"
+      "  --armor-yaw-offset <deg> 装甲板朝向的 π 偏置；现场标 r 时用，见 README\n"
+      "\n"
+      "探测（教程 §5A）：默认传统视觉；给了 --yolo 就用神经网络\n"
+      "  --yolo <模型.onnx>     YOLO-Pose 关键点模型\n"
+      "  --yolo-w <px>          输入宽，默认 640\n"
+      "  --yolo-h <px>          输入高，默认 640\n"
+      "  --yolo-classes <n>     类别数，默认 1\n"
+      "  --yolo-kpt-dim <n>     每个关键点的数值个数，3=(x,y,conf)，默认 3\n"
+      "  --yolo-conf <f>        检出置信度门限，默认 0.25\n"
+      "  --no-corner-refine     关掉 PCA 角点精修（教程 §5A.3）\n"
+      "\n"
+      "规划（教程场景 6/8）：\n"
+      "  --no-mpc               关掉 MPC，直接用延迟补偿后的瞄准角\n"
+      "  --max-yaw-acc <rad/s2> MPC 偏航角加速度上限，默认 50\n"
+      "  --max-pitch-acc <r/s2> MPC 俯仰角加速度上限，默认 100\n"
+      "  --comm-latency <s>     兜底通讯延迟超参，默认 0\n"
+      "  --plan-hz <hz>         高频规划线程频率，默认 250（0 = 关）\n"
+      "  --no-attitude          不用下位机反馈姿态做世界系变换（仅调试）\n"
+      "  --fire-lead <s>        发弹延迟；只影响开火时机，不改瞄准角\n"
       "  --enable-fire          允许开火（默认关）\n"
       "\n"
       "调试:\n"
@@ -158,6 +181,58 @@ bool parseArgs(int argc, char ** argv, Config & cfg) {
         return false;
       }
       //-----------------三个运行模式-------------
+    } else if (a == "--armor-pitch") {//--armor-pitch 装甲板自身俯仰（机械常量）
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.solver.yaw_fit.armor_pitch_deg = std::atof(argv[++i]);
+    } else if (a == "--no-yaw-fit") {//关掉 PnP 降自由度优化
+      cfg.solver.yaw_fit.enable = false;
+    } else if (a == "--armor-yaw-offset") {//装甲板朝向的 π 偏置（现场标 r 时用）
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.tracker.armor_yaw_offset_rad = std::atof(argv[++i]) * kDeg2Rad;
+    } else if (a == "--yolo") {//--yolo 用 YOLO-Pose 模型做探测
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.kind = DetectorKind::YOLO_POSE;
+      cfg.detect.yolo.model_path = argv[++i];
+    } else if (a == "--yolo-w") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.yolo.input_w = std::atoi(argv[++i]);
+    } else if (a == "--yolo-h") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.yolo.input_h = std::atoi(argv[++i]);
+    } else if (a == "--yolo-classes") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.yolo.num_classes = std::atoi(argv[++i]);
+    } else if (a == "--yolo-kpt-dim") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.yolo.kpt_dim = std::atoi(argv[++i]);
+    } else if (a == "--yolo-conf") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.detect.yolo.conf_thres = static_cast<float>(std::atof(argv[++i]));
+    } else if (a == "--no-corner-refine") {//关掉 PCA 角点精修
+      cfg.detect.corner_refine.enable = false;
+    } else if (a == "--no-mpc") {//关掉 MPC
+      cfg.planner.enable = false;
+    } else if (a == "--max-yaw-acc") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.planner.yaw_mpc.max_acc = std::atof(argv[++i]);
+    } else if (a == "--max-pitch-acc") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.planner.pitch_mpc.max_acc = std::atof(argv[++i]);
+    } else if (a == "--comm-latency") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.aim.comm_latency_s = std::atof(argv[++i]);
+    } else if (a == "--plan-hz") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.plan_hz = std::atoi(argv[++i]);
+      if (cfg.plan_hz < 0 || cfg.plan_hz > 1000) {
+        std::fprintf(stderr, "--plan-hz 要在 0~1000 之间（0 = 关）\n");
+        return false;
+      }
+    } else if (a == "--no-attitude") {//不用反馈姿态做世界系变换（仅调试）
+      cfg.use_attitude = false;
+    } else if (a == "--fire-lead") {
+      if (!wantValue(i, argc, argv)) return false;
+      cfg.aim.fire_lead_s = std::atof(argv[++i]);
     } else if (a == "--enable-fire") {//--enable-fire 启用射击
       cfg.enable_fire = true;
     } else if (a == "--debug-view") {//--debug-view 启用调试视图

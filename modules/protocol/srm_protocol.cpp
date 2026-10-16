@@ -95,27 +95,45 @@ void FrameParser::feed(const uint8_t* data, size_t len,
         buf_.insert(buf_.end(), data, data + len);
     }
 
+    // 溢出兜底：正常帧最长 30 字节，涨到这个量级说明已经没救了。语义同样是"丢弃当前缓存"。
     if (buf_.size() > kMaxBufferLen) {
         buf_.clear();
         ++resyncs_;
         return;
     }
 
-    while (buf_.size() >= kRecvFrameLen) {
-        const int16_t body_len = get_i16(buf_.data());
+    while (true) {
+        // ① 连长度字段都没收齐 → 留着等下次。
+        if (buf_.size() < sizeof(int16_t)) break;
 
+        // ② 非法长度 → 丢弃整个缓存，等下一帧。
+        // 协议没有魔数和 CRC，无法在任意字节处可靠重同步（逐字节滑动可能撞上 payload
+        // 里碰巧出现的 28），所以这里不滑动、直接清空。见 self_aim_protocol.md §1。
+        const int16_t body_len = get_i16(buf_.data());
         if (body_len != kRecvBodyLen) {
-            buf_.erase(buf_.begin());
+            buf_.clear();
             ++resyncs_;
-            continue;
+            break;
         }
 
-        if (auto fb = parse_feedback(buf_.data(), now_ns)) {
-            if (on_frame) on_frame(*fb);
+        // ③ 半帧 → 留着等下次。按长度字段现算，不直接用 kRecvFrameLen 常量。
+        const size_t frame_len =
+            sizeof(int16_t) + static_cast<size_t>(body_len);
+        if (buf_.size() < frame_len) break;
+
+        // ④ parse_feedback 内部已校验 body_len 与两个 ID。
+        //    未知 ID 同样按协议丢弃整个缓存——即使后面紧跟一帧合法帧也会一起丢掉，
+        //    这是文档要求的"有意丢弃"，不要改回滑动。
+        auto fb = parse_feedback(buf_.data(), now_ns);
+        if (!fb) {
+            buf_.clear();
+            ++resyncs_;
+            break;
         }
 
         buf_.erase(buf_.begin(),
-                   buf_.begin() + static_cast<std::ptrdiff_t>(kRecvFrameLen));
+                   buf_.begin() + static_cast<std::ptrdiff_t>(frame_len));
+        if (on_frame) on_frame(*fb);  // 循环继续 → 支持背靠背帧
     }
 }
 
